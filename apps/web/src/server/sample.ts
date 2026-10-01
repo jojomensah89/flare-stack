@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createDb, items } from "@repo/db";
 import { createServerFn } from "@tanstack/react-start";
+import { getServerClient } from "../lib/server-client";
 
 export const getServerStatus = createServerFn({ method: "GET" }).handler(async () => {
   return {
@@ -41,3 +42,17 @@ export const addDbItem = createServerFn({ method: "POST" })
 
     return { ok: true, item: newItem };
   });
+
+export const getServerBackendItems = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    const client = getServerClient();
+    const res = await client.api.items.$get();
+    if (!res.ok) {
+      return { ok: false, error: "Failed to fetch backend items via RPC", items: [] };
+    }
+    const data = await res.json();
+    return { ok: true, items: data.items };
+  } catch (error) {
+    return { ok: false, error: String(error), items: [] };
+  }
+});

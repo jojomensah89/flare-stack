@@ -20,6 +20,12 @@
     "AUTH_ALLOWED_HOSTS": "flare-reference-web.kojowap.workers.dev",
     "AUTH_PROTOCOL": "https",
   },
+  "services": [
+    {
+      "binding": "SERVER",
+      "service": "flare-reference-server",
+    },
+  ],
   "assets": {
     "directory": "./dist/client",
     "not_found_handling": "single-page-application",
@@ -31,6 +37,12 @@
       "AUTH_ALLOWED_HOSTS": "*-flare-reference-web.kojowap.workers.dev",
       "AUTH_PROTOCOL": "https",
     },
+    "services": [
+      {
+        "binding": "SERVER",
+        "service": "flare-reference-server-preview",
+      },
+    ],
     "d1_databases": [
       {
         "binding": "DB",
@@ -50,6 +62,12 @@
         "AUTH_ALLOWED_HOSTS": "localhost:5173",
         "AUTH_PROTOCOL": "http",
       },
+      "services": [
+        {
+          "binding": "SERVER",
+          "service": "flare-reference-server",
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",
@@ -68,6 +86,12 @@
         "AUTH_ALLOWED_HOSTS": "*-flare-reference-web.kojowap.workers.dev",
         "AUTH_PROTOCOL": "https",
       },
+      "services": [
+        {
+          "binding": "SERVER",
+          "service": "flare-reference-server-preview",
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",

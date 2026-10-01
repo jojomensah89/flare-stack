@@ -11,8 +11,11 @@ import {
   HeroSection,
   ServerStatusCard,
   type ServerState,
+  ServiceBindingCard,
+  type ServiceBindingItem,
 } from "../components/demo-cards";
-import { addDbItem, getDbItems, getServerStatus } from "../server/sample";
+import { apiClient } from "../lib/api-client";
+import { addDbItem, getDbItems, getServerBackendItems, getServerStatus } from "../server/sample";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
@@ -26,6 +29,43 @@ function IndexPage() {
   const [dbItems, setDbItems] = React.useState<DbItem[]>([]);
   const [dbLoading, setDbLoading] = React.useState(false);
   const [newItemName, setNewItemName] = React.useState("");
+
+  const [sbItems, setSbItems] = React.useState<ServiceBindingItem[]>([]);
+  const [sbLoading, setSbLoading] = React.useState(false);
+  const [sbStatus, setSbStatus] = React.useState<string | null>(null);
+
+  const fetchClientRpc = React.useCallback(async () => {
+    setSbLoading(true);
+    try {
+      const res = await apiClient.api.items.$get();
+      if (res.ok) {
+        const data = await res.json();
+        setSbItems(data.items);
+        setSbStatus("Client RPC (/api/items)");
+      }
+    } catch (err) {
+      console.error("Failed to fetch backend items via client RPC", err);
+      setSbStatus("Client RPC Error");
+    } finally {
+      setSbLoading(false);
+    }
+  }, []);
+
+  const fetchServerFn = React.useCallback(async () => {
+    setSbLoading(true);
+    try {
+      const res = await getServerBackendItems();
+      if (res.ok && res.items) {
+        setSbItems(res.items);
+        setSbStatus("Server Fn (Service Binding RPC)");
+      }
+    } catch (err) {
+      console.error("Failed to fetch backend items via server fn", err);
+      setSbStatus("Server Fn Error");
+    } finally {
+      setSbLoading(false);
+    }
+  }, []);
 
   const fetchDbItems = React.useCallback(async () => {
     setDbLoading(true);
@@ -80,6 +120,13 @@ function IndexPage() {
             serverState={serverState}
             loading={loading}
             onRefresh={() => void fetchServerStatus()}
+          />
+          <ServiceBindingCard
+            items={sbItems}
+            loading={sbLoading}
+            onFetchClientRpc={() => void fetchClientRpc()}
+            onFetchServerFn={() => void fetchServerFn()}
+            status={sbStatus}
           />
           <DesignSystemCard testInput={testInput} onTestInputChange={setTestInput} />
           <D1PersistenceCard

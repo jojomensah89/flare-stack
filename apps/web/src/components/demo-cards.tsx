@@ -30,6 +30,7 @@ import {
   Flame,
   Info,
   Layers,
+  Network,
   Server,
   Terminal,
 } from "lucide-react";
@@ -342,6 +343,83 @@ export function D1PersistenceCard({
       <CardFooter>
         <span className="text-xs text-muted-foreground">
           Shared canonical persistence between bun db:migrate and runtime
+        </span>
+      </CardFooter>
+    </Card>
+  );
+}
+
+export interface ServiceBindingItem {
+  id: string;
+  name: string;
+}
+
+export interface ServiceBindingCardProps {
+  items: ServiceBindingItem[];
+  loading: boolean;
+  onFetchClientRpc: () => void;
+  onFetchServerFn: () => void;
+  status: string | null;
+}
+
+export function ServiceBindingCard({
+  items,
+  loading,
+  onFetchClientRpc,
+  onFetchServerFn,
+  status,
+}: ServiceBindingCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Service Binding & Hono RPC</CardTitle>
+          <Network className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <CardDescription>
+          Zero-latency Cloudflare Service Binding connecting TanStack Start to Hono backend Worker
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={onFetchClientRpc} disabled={loading}>
+              Client RPC (/api/items)
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onFetchServerFn} disabled={loading}>
+              Server Fn (Service Binding)
+            </Button>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-4 font-mono text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Mode:</span>
+              <span className="font-semibold text-primary">{status ?? "Idle"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Backend Items:</span>
+              <span className="font-semibold">{items.length}</span>
+            </div>
+            {items.length > 0 ? (
+              <div className="space-y-1 pt-2">
+                {items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-muted-foreground">
+                    <span className="truncate">{item.name}</span>
+                    <span className="font-mono text-xs text-primary">{item.id}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="pt-1 text-muted-foreground italic">
+                Click a button above to fetch items from the backend Worker.
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter>
+        <span className="text-xs text-muted-foreground">
+          Type-safe RPC contract shared via @repo/server/contract with zero code duplication
         </span>
       </CardFooter>
     </Card>

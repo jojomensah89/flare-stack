@@ -4,7 +4,7 @@ export default defineFlareConfig({
   schemaVersion: 1,
   flareVersion: "0.14.1",
   productionBranch: "main",
-  preset: "app",
+  preset: "fullstack",
   database: "d1",
   auth: "better-auth",
   observability: "evlog",

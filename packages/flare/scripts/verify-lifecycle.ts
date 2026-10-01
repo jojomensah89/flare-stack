@@ -157,6 +157,9 @@ function createRunner(
     if (subcommand === "whoami") return success('{"account":"fixture"}');
     if (subcommand === "types") return success("Types generated in fixture.");
     if (subcommand === "deploy") {
+      if (runOptions.cwd === join(root, "apps", "server")) {
+        return success("Uploaded fixture-server\nNo targets deployed for fixture-server");
+      }
       assert.equal(runOptions.cwd, join(root, "apps", "web"));
       assert.equal(
         args.includes("--config"),
@@ -212,7 +215,7 @@ function createDependencies(
     confirm: async () => false,
     fetcher: async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      if (url.pathname === "/health") {
+      if (url.pathname === "/health" || url.pathname === "/api/health") {
         return new Response(JSON.stringify({ ok: true }), { status: 200 });
       }
       return new Response("fixture healthy", { status: 200 });
@@ -559,6 +562,74 @@ async function verifyInvalidHostInputs(): Promise<void> {
   });
 }
 
+async function verifyFullstackDeployment(): Promise<void> {
+  await withFixture({ database: "none" }, async (root) => {
+    const configPath = join(root, "flare.config.ts");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace('"preset": "app"', '"preset": "fullstack"'),
+    );
+
+    const serverDir = join(root, "apps", "server");
+    mkdirSync(serverDir, { recursive: true });
+    writeFileSync(
+      join(serverDir, "wrangler.jsonc"),
+      JSON.stringify(
+        {
+          name: "fixture-server",
+          compatibility_date: "2026-09-30",
+          workers_dev: false,
+          preview_urls: false,
+          secrets: { required: [] },
+          vars: { FLARE_ENVIRONMENT: "production" },
+          env: {
+            development: { secrets: { required: [] }, vars: { FLARE_ENVIRONMENT: "development" } },
+            preview: { secrets: { required: [] }, vars: { FLARE_ENVIRONMENT: "preview" } },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const { runner, calls } = createRunner(root);
+    const errors: string[] = [];
+    const healthChecks: string[] = [];
+    const deps = createDependencies(root, runner, errors);
+    deps.fetcher = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      healthChecks.push(url.pathname);
+      if (url.pathname === "/api/health" || url.pathname === "/health") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response("fixture healthy", { status: 200 });
+    };
+
+    const status = await runCli(["deploy", "--cloudflare-only"], deps);
+    assert.equal(status, 0);
+    assert.equal(errors.length, 0);
+
+    const serverDeploy = calls.find(
+      (call) => call.command === "wrangler" && call.cwd === serverDir && call.args[0] === "deploy",
+    );
+    const webDeploy = calls.find(
+      (call) =>
+        call.command === "wrangler" &&
+        call.cwd === join(root, "apps", "web") &&
+        call.args[0] === "deploy",
+    );
+    assert.ok(serverDeploy, "Must deploy apps/server");
+    assert.ok(webDeploy, "Must deploy apps/web");
+    const serverIndex = calls.indexOf(serverDeploy);
+    const webIndex = calls.indexOf(webDeploy);
+    assert.ok(serverIndex < webIndex, "Server must be deployed before web");
+    assert.ok(
+      healthChecks.includes("/api/health"),
+      "Health check must verify /api/health for fullstack",
+    );
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -568,6 +639,7 @@ async function main(): Promise<void> {
   await verifyMigrationIsolationAndFailures();
   await verifySecretsAndBootstrap();
   await verifyInvalidHostInputs();
+  await verifyFullstackDeployment();
   assert.equal(
     await runCli(["--help"], {
       cwd: tmpdir(),
@@ -576,7 +648,7 @@ async function main(): Promise<void> {
     0,
   );
   console.log(
-    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, and help. No remote operation was performed.",
+    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, and help. No remote operation was performed.",
   );
 }
 

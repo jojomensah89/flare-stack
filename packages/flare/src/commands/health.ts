@@ -24,6 +24,7 @@ export async function verifyAppHealth(
   fetcher: HealthFetcher,
   retries = 5,
   retryDelayMs = 1500,
+  healthPath = "/health",
 ): Promise<void> {
   const origin = normalizeBaseUrl(base);
   let lastError: Error | undefined;
@@ -36,25 +37,33 @@ export async function verifyAppHealth(
           `Root document health check failed: HTTP ${root.status} at ${origin.origin}/.`,
         );
       }
-      const health = await fetcher(new URL("/health", origin), {
+      const health = await fetcher(new URL(healthPath, origin), {
         method: "GET",
         redirect: "manual",
       });
       if (!health.ok) {
-        throw new Error(`/health check failed: HTTP ${health.status} at ${origin.origin}/health.`);
+        throw new Error(
+          `${healthPath} check failed: HTTP ${health.status} at ${origin.origin}${healthPath}.`,
+        );
       }
       let body: unknown;
       try {
         body = await health.json();
       } catch {
-        throw new Error(`/health returned a non-JSON response at ${origin.origin}/health.`);
+        throw new Error(
+          `${healthPath} returned a non-JSON response at ${origin.origin}${healthPath}.`,
+        );
       }
       if (!body || typeof body !== "object" || Array.isArray(body)) {
-        throw new Error(`/health returned an invalid response at ${origin.origin}/health.`);
+        throw new Error(
+          `${healthPath} returned an invalid response at ${origin.origin}${healthPath}.`,
+        );
       }
       const record = body as Record<string, unknown>;
       if (record.ok !== true || Object.keys(record).length !== 1) {
-        throw new Error(`/health must return only { ok: true } at ${origin.origin}/health.`);
+        throw new Error(
+          `${healthPath} must return only { ok: true } at ${origin.origin}${healthPath}.`,
+        );
       }
       return;
     } catch (error) {

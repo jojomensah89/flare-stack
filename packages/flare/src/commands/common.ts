@@ -123,6 +123,10 @@ export function webDirectory(project: ProjectContext): string {
   return join(project.root, "apps", "web");
 }
 
+export function serverDirectory(project: ProjectContext): string {
+  return join(project.root, "apps", "server");
+}
+
 export function runTool(
   deps: CliDependencies,
   command: ManagedCommand,

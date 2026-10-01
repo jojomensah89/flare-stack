@@ -8,6 +8,7 @@ import {
   printCommandOutput,
   runCheckAndBuild,
   runTool,
+  serverDirectory,
   webDirectory,
   withBuiltDeploymentConfig,
   type CliDependencies,
@@ -54,12 +55,32 @@ export async function commandDeploy(
   }
 
   await runCheckAndBuild(project, deps, cloudflareOnly, "production");
+
+  if (project.config.preset === "fullstack") {
+    output.log("Deploying backend server Worker (apps/server)...");
+    const serverResult = runTool(deps, "wrangler", ["deploy"], serverDirectory(project), {
+      env: clearCloudflareEnvironment(deps),
+    });
+    printCommandOutput(output, serverResult);
+    assertCommandSucceeded(serverResult, "Production Server Worker deploy");
+  }
+
+  output.log(
+    project.config.preset === "fullstack"
+      ? "Deploying frontend web Worker (apps/web)..."
+      : "Deploying Worker (apps/web)...",
+  );
   const argsForWrangler = withBuiltDeploymentConfig(project, ["deploy"]);
   const result = runTool(deps, "wrangler", argsForWrangler, webDirectory(project), {
     env: clearCloudflareEnvironment(deps),
   });
   printCommandOutput(output, result);
-  assertCommandSucceeded(result, "Production Worker deploy");
+  assertCommandSucceeded(
+    result,
+    project.config.preset === "fullstack"
+      ? "Production Web Worker deploy"
+      : "Production Worker deploy",
+  );
 
   const requestedUrl = getOption(args, "--url");
   const url = requestedUrl ?? deployedUrls(`${result.stdout}\n${result.stderr}`)[0];
@@ -69,9 +90,10 @@ export async function commandDeploy(
     );
     return 2;
   }
+  const healthPath = project.config.preset === "fullstack" ? "/api/health" : "/health";
   try {
-    await verifyAppHealth(url, deps.fetcher ?? fetch);
-    output.log(`Production health checks passed for ${url}: root and /health.`);
+    await verifyAppHealth(url, deps.fetcher ?? fetch, 5, 1500, healthPath);
+    output.log(`Production health checks passed for ${url}: root and ${healthPath}.`);
   } catch (error) {
     output.error(
       `Worker deployment succeeded, but post-deploy health verification failed: ${error instanceof Error ? error.message : String(error)}`,

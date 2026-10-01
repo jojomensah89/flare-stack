@@ -63,7 +63,11 @@ export function requireApp(project: ProjectContext, command: string): void {
 }
 
 export function requireSupportedAppDatabase(project: ProjectContext, command: string): void {
-  requireApp(project, command);
+  if (project.config.preset !== "app" && project.config.preset !== "fullstack") {
+    throw new Error(
+      `${command} currently supports the app and fullstack presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
+    );
+  }
   if (project.config.database === "neon") {
     throw new Error(
       `${command} cannot run for the Neon profile until its remote migration preflight is implemented; no deployment or database operation was attempted.`,

@@ -1,0 +1,5 @@
+DATABASE_URL=
+# Better Auth signing/encryption secret for local development only.
+# `bun setup` creates a separate local value. Never copy a production secret here.
+# Manual alternative: openssl rand -base64 32
+BETTER_AUTH_SECRET=

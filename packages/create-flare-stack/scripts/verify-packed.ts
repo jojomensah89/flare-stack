@@ -62,6 +62,14 @@ try {
     { name: "packed-d1", preset: "app", database: "d1", auth: "none" },
     { name: "packed-auth", preset: "app", database: "d1", auth: "better-auth" },
     { name: "packed-fullstack-auth", preset: "fullstack", database: "d1", auth: "better-auth" },
+    { name: "packed-neon", preset: "app", database: "neon", auth: "none" },
+    { name: "packed-neon-auth", preset: "app", database: "neon", auth: "better-auth" },
+    {
+      name: "packed-fullstack-neon-auth",
+      preset: "fullstack",
+      database: "neon",
+      auth: "better-auth",
+    },
   ]) {
     const destination = join(root, profile.name);
     const options = argsModule.makeProjectOptions(
@@ -88,7 +96,7 @@ try {
     assert.ok(existsSync(join(destination, ".oxlintrc.json")));
     assert.equal(
       existsSync(join(destination, "apps/web/.preview.vars.example")),
-      profile.auth === "better-auth",
+      profile.auth === "better-auth" || profile.database === "neon",
     );
   }
   console.log(

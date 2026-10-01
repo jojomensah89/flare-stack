@@ -6,13 +6,17 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
   if (options.preset !== "app" && options.preset !== "fullstack") {
     throw new UserInputError("Supported presets: app, fullstack.");
   }
-  if (String(options.database) !== "none" && String(options.database) !== "d1") {
-    throw new UserInputError(
-      "Neon is planned but not generated in this release. Supported database choices: none, d1.",
-    );
+  if (
+    String(options.database) !== "none" &&
+    String(options.database) !== "d1" &&
+    String(options.database) !== "neon"
+  ) {
+    throw new UserInputError("Supported database choices: none, d1, neon.");
   }
   if (options.auth === "better-auth" && options.database === "none") {
-    throw new UserInputError("Better Auth requires a database. Re-run with `--db d1 --auth`.");
+    throw new UserInputError(
+      "Better Auth requires a database. Re-run with `--db d1 --auth` or `--db neon --auth`.",
+    );
   }
 
   const templateLayers = ["base", "app"];
@@ -24,11 +28,22 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
     if (options.preset === "fullstack") {
       templateLayers.push("fullstack/db-d1");
     }
+  } else if (options.database === "neon") {
+    templateLayers.push("db/neon");
+    if (options.preset === "fullstack") {
+      templateLayers.push("fullstack/db-neon");
+    }
   }
   if (options.auth === "better-auth") {
     templateLayers.push("auth/better-auth");
     if (options.preset === "fullstack") {
       templateLayers.push("fullstack/auth-better-auth");
+    }
+    if (options.database === "neon") {
+      templateLayers.push("auth/better-auth-neon");
+      if (options.preset === "fullstack") {
+        templateLayers.push("fullstack/auth-better-auth-neon");
+      }
     }
   }
 

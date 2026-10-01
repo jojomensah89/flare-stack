@@ -68,11 +68,6 @@ export function requireSupportedAppDatabase(project: ProjectContext, command: st
       `${command} currently supports the app and fullstack presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
     );
   }
-  if (project.config.database === "neon") {
-    throw new Error(
-      `${command} cannot run for the Neon profile until its remote migration preflight is implemented; no deployment or database operation was attempted.`,
-    );
-  }
 }
 
 export function requireAppD1(project: ProjectContext, command: string): void {
@@ -80,6 +75,15 @@ export function requireAppD1(project: ProjectContext, command: string): void {
   if (project.config.database !== "d1") {
     throw new Error(
       `${command} requires the D1 profile, but this project selects ${project.config.database}.`,
+    );
+  }
+}
+
+export function requireAppNeon(project: ProjectContext, command: string): void {
+  requireSupportedAppDatabase(project, command);
+  if (project.config.database !== "neon") {
+    throw new Error(
+      `${command} requires the Neon profile, but this project selects ${project.config.database}.`,
     );
   }
 }

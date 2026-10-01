@@ -11,7 +11,7 @@ import {
   withConfig,
   type CliDependencies,
 } from "./common";
-import { readMigrationState } from "./db";
+import { readMigrationState, readNeonMigrationState } from "./db";
 import { callWhoAmI, validateRemoteHosts } from "./hosts";
 import { missingSecretNames, remoteSecretNames } from "./secrets";
 import { readSecretFile, validateGitignore } from "../env";
@@ -64,7 +64,9 @@ export async function commandDoctor(
     "Run flare setup cloudflare with exact production and preview hosts.",
   );
 
-  if (project.config.preset === "app" && project.config.database === "d1") {
+  const isSupportedPreset =
+    project.config.preset === "app" || project.config.preset === "fullstack";
+  if (isSupportedPreset && project.config.database === "d1") {
     try {
       getAppD1Bindings(project);
       check("D1 development, production, and preview bindings are isolated", true);
@@ -75,23 +77,19 @@ export async function commandDoctor(
         error instanceof Error ? error.message : String(error),
       );
     }
-  } else if (project.config.preset === "app" && project.config.database === "none") {
+  } else if (isSupportedPreset && project.config.database === "none") {
     check(
       "App without a database is supported",
       project.config.auth === "none",
       "Better Auth requires a database profile.",
     );
-  } else if (project.config.preset === "app" && project.config.database === "neon") {
-    check(
-      "Neon lifecycle is supported",
-      false,
-      "Neon migration preflight is deferred; this CLI will not report deployment readiness.",
-    );
+  } else if (isSupportedPreset && project.config.database === "neon") {
+    check("Neon database configuration", true);
   } else {
     check(
       "App lifecycle supported",
       false,
-      "This CLI release currently supports the app preset only.",
+      "This CLI release currently supports the app and fullstack presets only.",
     );
   }
 
@@ -132,6 +130,13 @@ export async function commandDoctor(
       check("Cloudflare authentication", true);
       if (project.config.database === "d1") {
         const production = readMigrationState(project, deps, "production");
+        check(
+          "Production migration state",
+          production.pending.length === 0,
+          `Run bun db:migrate:prod; pending: ${production.pending.join(", ")}.`,
+        );
+      } else if (project.config.database === "neon") {
+        const production = readNeonMigrationState(project, deps, "production");
         check(
           "Production migration state",
           production.pending.length === 0,

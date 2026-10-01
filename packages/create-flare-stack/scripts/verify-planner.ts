@@ -79,10 +79,45 @@ assert.deepEqual(fullstackD1Auth.templateLayers, [
   "fullstack/auth-better-auth",
 ]);
 
+const appNeon = createProjectPlan(projectOptions(["--db", "neon"]));
+assert.deepEqual(appNeon.templateLayers, ["base", "app", "db/neon"]);
+
+const appNeonAuth = createProjectPlan(projectOptions(["--db", "neon", "--auth"]));
+assert.deepEqual(appNeonAuth.templateLayers, [
+  "base",
+  "app",
+  "db/neon",
+  "auth/better-auth",
+  "auth/better-auth-neon",
+]);
+
+const fullstackNeon = createProjectPlan(projectOptions(["--preset", "fullstack", "--db", "neon"]));
+assert.deepEqual(fullstackNeon.templateLayers, [
+  "base",
+  "app",
+  "fullstack/common",
+  "db/neon",
+  "fullstack/db-neon",
+]);
+
+const fullstackNeonAuth = createProjectPlan(
+  projectOptions(["--preset", "fullstack", "--db", "neon", "--auth"]),
+);
+assert.deepEqual(fullstackNeonAuth.templateLayers, [
+  "base",
+  "app",
+  "fullstack/common",
+  "db/neon",
+  "fullstack/db-neon",
+  "auth/better-auth",
+  "fullstack/auth-better-auth",
+  "auth/better-auth-neon",
+  "fullstack/auth-better-auth-neon",
+]);
+
 rejects(() => projectOptions(["--preset", "worker"]), /not available.*app, fullstack/i);
-rejects(() => projectOptions(["--db", "neon"]), /Neon is planned.*none, d1/i);
 rejects(() => projectOptions(["--auth"]), /requires a database/i);
-rejects(() => projectOptions(["--db", "postgres"]), /Choose none or d1/i);
+rejects(() => projectOptions(["--db", "postgres"]), /Choose none, d1, or neon/i);
 rejects(() => projectOptions(["--auth=false"]), /Choose none or better-auth/i);
 rejects(() => projectOptions(["--flare-package", "relative/path.tgz"]), /absolute path/i);
 rejects(

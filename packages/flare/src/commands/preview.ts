@@ -11,7 +11,12 @@ import {
   withBuiltDeploymentConfig,
   type CliDependencies,
 } from "./common";
-import { migrationArgs, readMigrationState } from "./db";
+import {
+  applyNeonMigrations,
+  migrationArgs,
+  readMigrationState,
+  readNeonMigrationState,
+} from "./db";
 import { previewUrls, verifyAppHealth } from "./health";
 import { runtimeVars, validateRemoteHosts } from "./hosts";
 import { requireValidSecretsForPreview, verifyPreviewSecretsAfterDeploy } from "./secrets";
@@ -34,22 +39,29 @@ export async function commandPreview(
   requireValidSecretsForPreview(project, deps, getOutput(deps));
 
   const output = getOutput(deps);
-  const previewState =
-    project.config.database === "d1"
-      ? readMigrationState(project, deps, "preview")
-      : { pending: [] };
-  if (previewState.pending.length > 0) {
-    output.log(
-      `Applying ${previewState.pending.length} isolated preview D1 migration(s): ${previewState.pending.join(", ")}.`,
-    );
-    const apply = runTool(
-      deps,
-      "wrangler",
-      migrationArgs(project, "preview", true),
-      webDirectory(project),
-    );
-    printCommandOutput(output, apply);
-    assertCommandSucceeded(apply, "Apply preview D1 migrations");
+  if (project.config.database === "d1") {
+    const previewState = readMigrationState(project, deps, "preview");
+    if (previewState.pending.length > 0) {
+      output.log(
+        `Applying ${previewState.pending.length} isolated preview D1 migration(s): ${previewState.pending.join(", ")}.`,
+      );
+      const apply = runTool(
+        deps,
+        "wrangler",
+        migrationArgs(project, "preview", true),
+        webDirectory(project),
+      );
+      printCommandOutput(output, apply);
+      assertCommandSucceeded(apply, "Apply preview D1 migrations");
+    }
+  } else if (project.config.database === "neon") {
+    const previewState = readNeonMigrationState(project, deps, "preview");
+    if (previewState.pending.length > 0) {
+      output.log(
+        `Applying ${previewState.pending.length} isolated preview Neon migration(s): ${previewState.pending.join(", ")}.`,
+      );
+      await applyNeonMigrations(project, deps, "preview", false);
+    }
   }
 
   const build = runTool(deps, "bun", ["run", "build"], project.root, {

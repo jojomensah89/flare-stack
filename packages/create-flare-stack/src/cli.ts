@@ -14,13 +14,13 @@ Usage:
 
 Supported in this release:
   --preset app|fullstack
-  --db none|d1
-  --auth                 Enable Better Auth (requires --db d1)
+  --db none|d1|neon
+  --auth                 Enable Better Auth (requires --db d1 or --db neon)
   --auth=none|better-auth
   --flare-package <path-or-url>
                          Use a local Flare package archive/directory or archive URL
 
-Extension, worker, and Neon templates are not available in this release.
+Extension and worker templates are not available in this release.
 `;
 
 async function collectInteractiveChoices<
@@ -35,7 +35,7 @@ async function collectInteractiveChoices<
     }
     if (!choices.database) {
       choices.database =
-        (await ask.question("Database (none/d1) [none]: ")).trim().toLowerCase() || "none";
+        (await ask.question("Database (none/d1/neon) [none]: ")).trim().toLowerCase() || "none";
     }
     if (!choices.auth) {
       const answer = (await ask.question("Enable Better Auth? (y/N): ")).trim().toLowerCase();

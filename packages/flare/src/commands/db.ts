@@ -1,6 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getAppD1Bindings, requireAppD1, type D1Binding, type ProjectContext } from "../project";
+import { parseEnvText } from "../env";
+import {
+  getAppD1Bindings,
+  requireAppD1,
+  requireSupportedAppDatabase,
+  type D1Binding,
+  type ProjectContext,
+} from "../project";
 import { assertCommandSucceeded, commandError, type RunResult } from "../runner";
 import {
   collectObjects,
@@ -10,6 +17,7 @@ import {
   getOption,
   getOutput,
   hasOption,
+  makeEnv,
   parseJsonOutput,
   printCommandOutput,
   runTool,
@@ -109,8 +117,14 @@ export function readMigrationState(
   return parseMigrationState(result, `D1 ${env} migration status`);
 }
 
+export function getMigrationsDirectory(project: ProjectContext): string {
+  return project.config.database === "neon"
+    ? join(project.root, "packages", "db", "src", "neon", "migrations")
+    : join(project.root, "packages", "db", "migrations");
+}
+
 export function isDestructiveMigration(sql: string): boolean {
-  return /\b(?:DROP\s+(?:TABLE|COLUMN|INDEX)|ALTER\s+TABLE\s+[\s\S]*?\bRENAME\s+(?:COLUMN|TO))\b/i.test(
+  return /\b(?:DROP\s+(?:TABLE|COLUMN|INDEX|SCHEMA|TYPE|VIEW)|ALTER\s+TABLE\s+[\s\S]*?\bRENAME\s+(?:COLUMN|TO))\b/i.test(
     sql,
   );
 }
@@ -120,7 +134,7 @@ export function checkDestructivePendingMigrations(
   pending: string[],
   allow: boolean,
 ): string[] {
-  const migrationsDirectory = join(project.root, "packages", "db", "migrations");
+  const migrationsDirectory = getMigrationsDirectory(project);
   const destructive: string[] = [];
   for (const name of pending) {
     const file = join(migrationsDirectory, name);
@@ -213,6 +227,121 @@ export function ensureRemoteD1(
   return refreshed;
 }
 
+export function getNeonDatabaseUrl(
+  project: ProjectContext,
+  deps: CliDependencies,
+  env: "local" | "preview" | "production",
+): string {
+  const envVars = getEnv(deps);
+  if (env === "production") {
+    const url = envVars.MIGRATION_STATUS_DATABASE_URL || envVars.DATABASE_URL;
+    if (url) return url;
+    throw new Error(
+      "Neon production migration operations require MIGRATION_STATUS_DATABASE_URL or DATABASE_URL in environment.",
+    );
+  }
+  if (env === "preview") {
+    if (envVars.DATABASE_URL) return envVars.DATABASE_URL;
+    const previewVarsPaths = [
+      join(project.root, "apps", "web", ".preview.vars"),
+      join(project.root, "apps", "server", ".preview.vars"),
+    ];
+    for (const previewVarsPath of previewVarsPaths) {
+      if (existsSync(previewVarsPath)) {
+        const parsed = parseEnvText(readFileSync(previewVarsPath, "utf8"), previewVarsPath);
+        const url = parsed.get("DATABASE_URL");
+        if (url) return url;
+      }
+    }
+    throw new Error(
+      "Neon preview migration operations require DATABASE_URL in apps/web/.preview.vars or environment.",
+    );
+  }
+  // local
+  if (envVars.DATABASE_URL) return envVars.DATABASE_URL;
+  const devVarsPaths = [
+    join(project.root, "apps", "web", ".dev.vars"),
+    join(project.root, "apps", "server", ".dev.vars"),
+  ];
+  for (const devVarsPath of devVarsPaths) {
+    if (existsSync(devVarsPath)) {
+      const parsed = parseEnvText(readFileSync(devVarsPath, "utf8"), devVarsPath);
+      const url = parsed.get("DATABASE_URL");
+      if (url) return url;
+    }
+  }
+  throw new Error(
+    "Neon local migration operations require DATABASE_URL in apps/web/.dev.vars or environment.",
+  );
+}
+
+export function parseNeonMigrationState(result: RunResult, label: string): MigrationState {
+  if (result.status !== 0) throw commandError(result, label);
+  const stdout = result.stdout.trim();
+  const match = stdout.match(/\{[\s\S]*"pending"[\s\S]*\}/);
+  if (!match) {
+    throw new Error(`${label} did not report a recognized migration state.`);
+  }
+  try {
+    const parsed = JSON.parse(match[0]) as { pending?: string[] };
+    if (!parsed || !Array.isArray(parsed.pending)) {
+      throw new Error(`${label} did not report a valid pending array.`);
+    }
+    return { pending: parsed.pending };
+  } catch {
+    throw new Error(`${label} output could not be parsed: ${stdout}`);
+  }
+}
+
+export function readNeonMigrationState(
+  project: ProjectContext,
+  deps: CliDependencies,
+  env: "local" | "preview" | "production",
+): MigrationState {
+  if (env === "production") ensureProductionEnvironment(project, deps);
+  const url = getNeonDatabaseUrl(project, deps, env);
+  const result = runTool(
+    deps,
+    "bun",
+    ["run", "./src/neon/status.ts"],
+    join(project.root, "packages", "db"),
+    { env: makeEnv(deps, { DATABASE_URL: url }) },
+  );
+  return parseNeonMigrationState(result, `Neon ${env} migration status`);
+}
+
+export async function applyNeonMigrations(
+  project: ProjectContext,
+  deps: CliDependencies,
+  environment: "local" | "preview" | "production",
+  allowDestructive = false,
+): Promise<void> {
+  if (environment === "production") ensureProductionEnvironment(project, deps);
+  const state = readNeonMigrationState(project, deps, environment);
+  if (state.pending.length === 0) {
+    getOutput(deps).log(`Neon ${environment} database is current; no migrations to apply.`);
+    return;
+  }
+  if (environment === "production") {
+    const destructive = checkDestructivePendingMigrations(project, state.pending, allowDestructive);
+    if (destructive.length > 0) {
+      getOutput(deps).warn(
+        `Acknowledged destructive production migration(s): ${destructive.join(", ")}.`,
+      );
+    }
+  }
+  const url = getNeonDatabaseUrl(project, deps, environment);
+  const result = runTool(
+    deps,
+    "bun",
+    ["run", "./src/neon/migrate.ts"],
+    join(project.root, "packages", "db"),
+    { env: makeEnv(deps, { DATABASE_URL: url }) },
+  );
+  printCommandOutput(getOutput(deps), result);
+  assertCommandSucceeded(result, `Apply Neon ${environment} migrations`);
+}
+
 export async function commandDb(
   project: ProjectContext,
   deps: CliDependencies,
@@ -221,23 +350,52 @@ export async function commandDb(
 ): Promise<number> {
   const output = getOutput(deps);
   expectOnlyFlags(subargs, ["--env", "--allow-destructive", "--provider"]);
-  if (getOption(subargs, "--provider") === "neon" || project.config.database === "neon") {
+  const provider = getOption(subargs, "--provider") ?? project.config.database;
+  if (provider !== project.config.database) {
     throw new Error(
-      `Neon ${subcommand ?? "database"} lifecycle is deferred because remote status and cleanup are not verified; no success is implied.`,
+      `Database provider must match flare.config.ts (${project.config.database.toUpperCase()}). No database operation was attempted.`,
     );
   }
-  if (getOption(subargs, "--provider") && getOption(subargs, "--provider") !== "d1") {
-    throw new Error(
-      "Database provider must match flare.config.ts (D1). No database operation was attempted.",
-    );
-  }
-  requireAppD1(project, `flare db ${subcommand ?? ""}`);
+  requireSupportedAppDatabase(project, `flare db ${subcommand ?? ""}`);
   const environment = getOption(subargs, "--env") ?? "local";
   if (environment !== "local" && environment !== "preview" && environment !== "production") {
     throw new Error(
       `Unsupported database environment ${environment}. Choose local, preview, or production.`,
     );
   }
+
+  if (project.config.database === "neon") {
+    if (subcommand === "status") {
+      const state = readNeonMigrationState(project, deps, environment);
+      if (state.pending.length === 0) output.log(`Neon ${environment} database is current.`);
+      else
+        output.error(`Neon ${environment} has pending migration(s): ${state.pending.join(", ")}.`);
+      return state.pending.length === 0 ? 0 : 1;
+    }
+    if (subcommand === "migrate") {
+      const destructiveAllowed = hasOption(subargs, "--allow-destructive");
+      await applyNeonMigrations(project, deps, environment, destructiveAllowed);
+      return 0;
+    }
+    if (subcommand === "seed" || subcommand === "reset") {
+      if (environment !== "local") {
+        throw new Error(
+          `Neon ${subcommand} is supported for local state only. Remote ${subcommand} is intentionally unavailable.`,
+        );
+      }
+      if (subcommand === "reset") {
+        throw new Error(
+          "Neon reset is deferred until a safe transactional branch reset is configured. No tables were dropped.",
+        );
+      }
+      throw new Error("Neon seed data is not defined by this project. No database was changed.");
+    }
+    throw new Error(
+      "Usage: flare db <migrate|status|seed|reset> [--env local|preview|production].",
+    );
+  }
+
+  requireAppD1(project, `flare db ${subcommand ?? ""}`);
   if (subcommand === "status") {
     const state = readMigrationState(project, deps, environment);
     if (state.pending.length === 0) output.log(`D1 ${environment} database is current.`);

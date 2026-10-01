@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { FLARE_VERSION, GenerationError, type ProjectPlan } from "./model";
 import { DEFAULT_FLARE_RELEASE_URL } from "./release";
@@ -262,9 +262,26 @@ export async function validateMaterializedProject(
     await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
     await assertPathPresent(root, "apps/web/src/lib/server-client.ts", "Server RPC client");
   }
-  await assertPathAbsent(root, "packages/db/src/neon", "Neon implementation");
-  await assertPathAbsent(root, "packages/db/drizzle.neon.config.ts", "Neon Drizzle configuration");
-  await assertPathAbsent(root, "apps/web/src/server/auth.neon.ts", "Neon Better Auth integration");
+  if (plan.options.database !== "neon") {
+    await assertPathAbsent(root, "packages/db/src/neon", "Neon implementation");
+    await assertPathAbsent(
+      root,
+      "packages/db/drizzle.neon.config.ts",
+      "Neon Drizzle configuration",
+    );
+    await assertPathAbsent(
+      root,
+      "apps/web/src/server/auth.neon.ts",
+      "Neon Better Auth integration",
+    );
+  } else {
+    await assertPathPresent(root, "packages/db/src/neon", "Neon implementation");
+    await assertPathPresent(
+      root,
+      "packages/db/drizzle.neon.config.ts",
+      "Neon Drizzle configuration",
+    );
+  }
   const wranglerText = await readFile(join(root, "apps", "web", "wrangler.jsonc"), "utf8");
 
   if (plan.options.database === "none") {
@@ -314,6 +331,43 @@ export async function validateMaterializedProject(
         );
       }
     }
+  } else if (plan.options.database === "neon") {
+    const dbPackage = join(root, "packages", "db", "package.json");
+    const wranglerPath = join(root, "apps", "web", "wrangler.jsonc");
+    const wranglerText = await readFile(wranglerPath, "utf8").catch(() => "");
+    if (!(await exists(dbPackage)) || wranglerText.includes("d1_databases")) {
+      throw new GenerationError(
+        "generated project validation",
+        "The Neon overlay is missing its database package or incorrectly contains a Wrangler D1 binding.",
+        "Complete the Neon overlay before advertising `--db neon`.",
+      );
+    }
+    if (!wranglerText.includes("DATABASE_URL")) {
+      throw new GenerationError(
+        "generated project validation",
+        "The Neon overlay must declare DATABASE_URL in secrets.required.",
+        "Declare DATABASE_URL in apps/web/wrangler.jsonc secrets.required.",
+      );
+    }
+    await assertPathAbsent(root, "packages/db/src/schema", "D1 SQLite schema in Neon profile");
+    await assertPathAbsent(root, "packages/db/migrations", "D1 SQLite migrations in Neon profile");
+    await assertPathPresent(root, "packages/db/src/neon/schema/items.ts", "Neon items schema");
+    await assertPathPresent(root, "packages/db/src/neon/schema/index.ts", "Neon index schema");
+    await assertPathPresent(root, "packages/db/src/neon/migrations", "Neon migrations");
+    if (plan.options.preset === "fullstack") {
+      const serverWranglerPath = join(root, "apps", "server", "wrangler.jsonc");
+      const serverWranglerText = await readFile(serverWranglerPath, "utf8").catch(() => "");
+      if (
+        serverWranglerText.includes("d1_databases") ||
+        !serverWranglerText.includes("DATABASE_URL")
+      ) {
+        throw new GenerationError(
+          "generated project validation",
+          "The fullstack Neon overlay must declare DATABASE_URL on apps/server and must not contain D1 bindings.",
+          "Declare DATABASE_URL in apps/server/wrangler.jsonc secrets.required.",
+        );
+      }
+    }
   }
 
   if (plan.options.auth === "none") {
@@ -323,22 +377,50 @@ export async function validateMaterializedProject(
     await assertPathAbsent(root, "apps/web/src/lib/auth-client.ts", "Better Auth client");
     await assertPathAbsent(root, "apps/web/src/routes/api/auth", "Better Auth route");
     await assertPathAbsent(root, "packages/db/src/schema/auth.ts", "Better Auth schema");
-    await assertPathAbsent(
-      root,
-      "apps/web/.preview.vars.example",
-      "Better Auth Preview secret example",
-    );
+    await assertPathAbsent(root, "packages/db/src/neon/schema/auth.ts", "Better Auth Neon schema");
+    if (plan.options.database !== "neon") {
+      await assertPathAbsent(
+        root,
+        "apps/web/.preview.vars.example",
+        "Better Auth Preview secret example",
+      );
+    } else {
+      await assertPathPresent(
+        root,
+        "apps/web/.preview.vars.example",
+        "Neon Preview database secret example",
+      );
+      const previewExample = await readFile(join(root, "apps/web/.preview.vars.example"), "utf8");
+      if (!/^DATABASE_URL\s*=/m.test(previewExample)) {
+        throw new GenerationError(
+          "generated project validation",
+          "apps/web/.preview.vars.example is missing the required DATABASE_URL entry.",
+          "Declare DATABASE_URL in .preview.vars.example.",
+        );
+      }
+      if (/^BETTER_AUTH_SECRET\s*=/m.test(previewExample)) {
+        throw new GenerationError(
+          "generated project validation",
+          "apps/web/.preview.vars.example should not contain BETTER_AUTH_SECRET when auth is none.",
+          "Remove BETTER_AUTH_SECRET when auth is none.",
+        );
+      }
+    }
     if (plan.options.preset === "fullstack") {
       await assertPathAbsent(root, "apps/server/src/routes/auth.ts", "Server Better Auth routes");
     }
   } else {
+    const authSchemaPath =
+      plan.options.database === "neon"
+        ? "packages/db/src/neon/schema/auth.ts"
+        : "packages/db/src/schema/auth.ts";
     for (const relativePath of [
       "apps/web/src/server/auth.ts",
       "apps/web/src/server/auth-config.ts",
       "apps/web/src/server/session.ts",
       "apps/web/src/lib/auth-client.ts",
       "apps/web/src/routes/api/auth",
-      "packages/db/src/schema/auth.ts",
+      authSchemaPath,
       "apps/web/.dev.vars.example",
       "apps/web/.preview.vars.example",
     ]) {
@@ -346,7 +428,7 @@ export async function validateMaterializedProject(
     }
 
     const requiredSecretDeclarations =
-      wranglerText.match(/"required"\s*:\s*\[\s*"BETTER_AUTH_SECRET"\s*\]/g) ?? [];
+      wranglerText.match(/"required"\s*:\s*\[[\s\S]*?"BETTER_AUTH_SECRET"[\s\S]*?\]/g) ?? [];
     if (requiredSecretDeclarations.length !== 3) {
       throw new GenerationError(
         "generated project validation",
@@ -364,6 +446,13 @@ export async function validateMaterializedProject(
           "Keep the local environment examples aligned with the Wrangler required-secret declarations.",
         );
       }
+      if (plan.options.database === "neon" && !/^DATABASE_URL\s*=/m.test(example)) {
+        throw new GenerationError(
+          "generated project validation",
+          `${examplePath} is missing the required DATABASE_URL entry for Neon.`,
+          "Keep DATABASE_URL in environment examples for Neon.",
+        );
+      }
     }
 
     if (plan.options.preset === "fullstack") {
@@ -374,7 +463,8 @@ export async function validateMaterializedProject(
         "utf8",
       );
       const serverSecretDeclarations =
-        serverWranglerText.match(/"required"\s*:\s*\[\s*"BETTER_AUTH_SECRET"\s*\]/g) ?? [];
+        serverWranglerText.match(/"required"\s*:\s*\[[\s\S]*?"BETTER_AUTH_SECRET"[\s\S]*?\]/g) ??
+        [];
       if (serverSecretDeclarations.length !== 3) {
         throw new GenerationError(
           "generated project validation",
@@ -408,11 +498,13 @@ export async function validateMaterializedProject(
       names.includes("@neondatabase/serverless") ||
       names.some((name) => name.includes("neon-serverless"))
     ) {
-      throw new GenerationError(
-        "generated project validation",
-        `The generated app contains a Neon runtime dependency in ${relative(root, path)}.`,
-        "Remove Neon packages from the v1 app overlays.",
-      );
+      if (plan.options.database !== "neon") {
+        throw new GenerationError(
+          "generated project validation",
+          `The generated app contains a Neon runtime dependency in ${relative(root, path)}.`,
+          "Remove Neon packages from non-Neon overlays.",
+        );
+      }
     }
     if (plan.options.auth === "none" && names.includes("better-auth")) {
       throw new GenerationError(
@@ -500,6 +592,11 @@ export async function materializeProject(
         { cause: error },
       );
     }
+  }
+
+  if (plan.options.database === "neon") {
+    await rm(join(target, "packages", "db", "src", "schema"), { recursive: true, force: true });
+    await rm(join(target, "packages", "db", "migrations"), { recursive: true, force: true });
   }
 
   await renderFiles(target, values);

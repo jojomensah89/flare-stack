@@ -23,9 +23,13 @@ const fixtures = [
   { name: "app-no-db", preset: "app", database: "none", auth: "none" },
   { name: "app-d1", preset: "app", database: "d1", auth: "none" },
   { name: "app-d1-auth", preset: "app", database: "d1", auth: "better-auth" },
+  { name: "app-neon", preset: "app", database: "neon", auth: "none" },
+  { name: "app-neon-auth", preset: "app", database: "neon", auth: "better-auth" },
   { name: "fullstack-no-db", preset: "fullstack", database: "none", auth: "none" },
   { name: "fullstack-d1", preset: "fullstack", database: "d1", auth: "none" },
   { name: "fullstack-d1-auth", preset: "fullstack", database: "d1", auth: "better-auth" },
+  { name: "fullstack-neon", preset: "fullstack", database: "neon", auth: "none" },
+  { name: "fullstack-neon-auth", preset: "fullstack", database: "neon", auth: "better-auth" },
 ] as const;
 const fixtureRoot = await mkdtemp(join(tmpdir(), "flare-create-fixtures-"));
 const resolvedFixtureRoot = resolve(fixtureRoot);

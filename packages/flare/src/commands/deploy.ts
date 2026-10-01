@@ -13,7 +13,7 @@ import {
   withBuiltDeploymentConfig,
   type CliDependencies,
 } from "./common";
-import { readMigrationState } from "./db";
+import { readMigrationState, readNeonMigrationState } from "./db";
 import { deployedUrls, verifyAppHealth } from "./health";
 import { validateRemoteHosts } from "./hosts";
 import { missingSecretNames, remoteSecretNames, reportSecretNames } from "./secrets";
@@ -35,7 +35,9 @@ export async function commandDeploy(
   const databaseState =
     project.config.database === "d1"
       ? readMigrationState(project, deps, "production")
-      : { pending: [] };
+      : project.config.database === "neon"
+        ? readNeonMigrationState(project, deps, "production")
+        : { pending: [] };
   if (databaseState.pending.length > 0) {
     throw new Error(
       `Production database has pending migration(s): ${databaseState.pending.join(", ")}. Run bun db:migrate:prod, then retry deploy.`,

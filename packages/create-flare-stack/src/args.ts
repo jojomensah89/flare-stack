@@ -3,6 +3,8 @@ import { basename, dirname, isAbsolute, parse, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import {
   FLARE_VERSION,
+  type Auth,
+  type Database,
   type ParsedArguments,
   type Preset,
   type ProjectOptions,
@@ -119,14 +121,9 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
   }
   if (parsed.database) {
     const database = parsed.database.toLowerCase();
-    if (database === "neon") {
+    if (database !== "none" && database !== "d1" && database !== "neon") {
       throw new UserInputError(
-        "Neon is planned but not generated in this release. Supported database choices: none, d1.",
-      );
-    }
-    if (database !== "none" && database !== "d1") {
-      throw new UserInputError(
-        `Database \`${parsed.database}\` is not supported. Choose none or d1.`,
+        `Database \`${parsed.database}\` is not supported. Choose none, d1, or neon.`,
       );
     }
   }
@@ -140,7 +137,9 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
     );
   }
   if (parsed.database?.toLowerCase() === "none" && parsed.auth?.toLowerCase() === "better-auth") {
-    throw new UserInputError("Better Auth requires a database. Re-run with `--db d1 --auth`.");
+    throw new UserInputError(
+      "Better Auth requires a database. Re-run with `--db d1 --auth` or `--db neon --auth`.",
+    );
   }
 }
 
@@ -233,26 +232,23 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
     );
   }
 
-  const db = (parsed.database ?? "none").toLowerCase();
-  if (db === "neon") {
+  const db = (parsed.database ?? "none").toLowerCase() as Database;
+  if (db !== "none" && db !== "d1" && db !== "neon") {
     throw new UserInputError(
-      "Neon is planned but not generated in this release. Supported database choices: none, d1.",
-    );
-  }
-  if (db !== "none" && db !== "d1") {
-    throw new UserInputError(
-      `Database \`${parsed.database}\` is not supported. Choose none or d1.`,
+      `Database \`${parsed.database}\` is not supported. Choose none, d1, or neon.`,
     );
   }
 
-  const auth = (parsed.auth ?? "none").toLowerCase();
+  const auth = (parsed.auth ?? "none").toLowerCase() as Auth;
   if (auth !== "none" && auth !== "better-auth") {
     throw new UserInputError(
       `Auth option \`${parsed.auth}\` is not supported. Choose none or better-auth.`,
     );
   }
   if (auth === "better-auth" && db === "none") {
-    throw new UserInputError("Better Auth requires a database. Re-run with `--db d1 --auth`.");
+    throw new UserInputError(
+      "Better Auth requires a database. Re-run with `--db d1 --auth` or `--db neon --auth`.",
+    );
   }
 
   if (parsed.flarePackagePath) {

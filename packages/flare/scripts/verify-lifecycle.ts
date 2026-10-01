@@ -20,7 +20,7 @@ interface RecordedCall {
 }
 
 interface FixtureOptions {
-  database?: "none" | "d1";
+  database?: "none" | "d1" | "neon";
   requiredSecrets?: string[];
 }
 
@@ -125,7 +125,7 @@ async function withFixture<T>(
 
 function createRunner(
   root: string,
-  options: { redirect?: string; builtWorkerName?: string } = {},
+  options: { redirect?: string; builtWorkerName?: string; neonPending?: string[] } = {},
 ): { runner: CommandRunner; calls: RecordedCall[] } {
   const calls: RecordedCall[] = [];
   const runner: CommandRunner = (command, args, runOptions) => {
@@ -150,12 +150,24 @@ function createRunner(
         );
         return success();
       }
+      if (args[0] === "run" && typeof args[1] === "string" && args[1].endsWith("status.ts")) {
+        return success(JSON.stringify({ pending: options.neonPending ?? [] }));
+      }
+      if (args[0] === "run" && typeof args[1] === "string" && args[1].endsWith("migrate.ts")) {
+        return success("Neon migrations applied successfully.");
+      }
       throw new Error(`Unexpected fake Bun command: ${args.join(" ")}`);
     }
 
     const subcommand = args[0];
     if (subcommand === "whoami") return success('{"account":"fixture"}');
     if (subcommand === "types") return success("Types generated in fixture.");
+    if (subcommand === "secret" && args[1] === "list") {
+      return success(JSON.stringify([{ name: "DATABASE_URL" }]));
+    }
+    if (subcommand === "preview" && args.includes("secret")) {
+      return success(JSON.stringify([{ name: "DATABASE_URL" }]));
+    }
     if (subcommand === "deploy") {
       if (runOptions.cwd === join(root, "apps", "server")) {
         return success("Uploaded fixture-server\nNo targets deployed for fixture-server");
@@ -630,6 +642,94 @@ async function verifyFullstackDeployment(): Promise<void> {
   });
 }
 
+async function verifyNeonLifecycle(): Promise<void> {
+  await withFixture({ database: "neon", requiredSecrets: ["DATABASE_URL"] }, async (root) => {
+    mkdirSync(join(root, "packages", "db", "src", "neon", "migrations"), { recursive: true });
+    writeFileSync(
+      join(root, "packages", "db", "src", "neon", "migrations", "0000_initial.sql"),
+      "CREATE TABLE users (id serial PRIMARY KEY);",
+      "utf8",
+    );
+    writeFileSync(
+      join(root, "packages", "db", "src", "neon", "migrations", "0001_drop.sql"),
+      "DROP TABLE users;",
+      "utf8",
+    );
+
+    // 1. Missing DATABASE_URL fails
+    const { runner } = createRunner(root, { neonPending: [] });
+    const errors: string[] = [];
+    const deps = createDependencies(root, runner, errors);
+
+    assert.equal(await runCli(["db", "status", "--env", "local"], deps), 1);
+    assert.ok(
+      errors.some((error) =>
+        error.includes(
+          "Neon local migration operations require DATABASE_URL in apps/web/.dev.vars or environment",
+        ),
+      ),
+    );
+
+    // Write .dev.vars and .preview.vars
+    writeFileSync(
+      join(root, "apps", "web", ".dev.vars"),
+      "DATABASE_URL=postgresql://local:local@localhost/db\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(root, "apps", "web", ".preview.vars"),
+      "DATABASE_URL=postgresql://preview:preview@localhost/db\n",
+      "utf8",
+    );
+
+    // 2. Status with no pending migrations returns 0
+    assert.equal(await runCli(["db", "status", "--env", "local"], deps), 0);
+
+    // 3. Status with pending migrations returns 1
+    const { runner: runnerWithPending } = createRunner(root, {
+      neonPending: ["0000_initial.sql"],
+    });
+    const pendingDeps = createDependencies(root, runnerWithPending, errors);
+    assert.equal(await runCli(["db", "status", "--env", "local"], pendingDeps), 1);
+
+    // 4. Migrate applies migrations
+    assert.equal(await runCli(["db", "migrate", "--env", "local"], pendingDeps), 0);
+
+    // 5. Destructive production migration guard
+    const { runner: runnerDestructive } = createRunner(root, {
+      neonPending: ["0001_drop.sql"],
+    });
+    const prodDeps = createDependencies(root, runnerDestructive, errors);
+    prodDeps.env = { ...prodDeps.env, DATABASE_URL: "postgresql://prod:prod@localhost/db" };
+
+    assert.equal(await runCli(["db", "migrate", "--env", "production"], prodDeps), 1);
+    assert.ok(
+      errors.some((error) =>
+        error.includes("Pending production migration(s) contain destructive SQL: 0001_drop.sql"),
+      ),
+    );
+
+    // 6. Destructive with --allow-destructive passes
+    assert.equal(
+      await runCli(["db", "migrate", "--env", "production", "--allow-destructive"], prodDeps),
+      0,
+    );
+
+    // 7. Deploy preflight blocks on pending production migration
+    assert.equal(await runCli(["deploy"], prodDeps), 1);
+    assert.ok(
+      errors.some((error) =>
+        error.includes("Production database has pending migration(s): 0001_drop.sql"),
+      ),
+    );
+
+    // 8. Preview automatically applies pending migrations
+    const previewDeps = createDependencies(root, runnerWithPending, errors);
+    const previewStatus = await runCli(["preview"], previewDeps);
+    assert.equal(previewStatus, 0);
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -640,6 +740,7 @@ async function main(): Promise<void> {
   await verifySecretsAndBootstrap();
   await verifyInvalidHostInputs();
   await verifyFullstackDeployment();
+  await verifyNeonLifecycle();
   assert.equal(
     await runCli(["--help"], {
       cwd: tmpdir(),

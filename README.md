@@ -4,15 +4,21 @@ A Cloudflare-first TypeScript starter and lifecycle CLI. This release follows th
 
 ## Current scope
 
-The canonical reference is the TanStack Start `app` preset with D1 and Better Auth. The initial generator targets three combinations:
+The canonical reference is the TanStack Start `app` preset with D1 and Better Auth. The generator targets the following combinations:
 
-| Preset | Database | Authentication |
-| ------ | -------- | -------------- |
-| app    | none     | none           |
-| app    | D1       | none           |
-| app    | D1       | Better Auth    |
+| Preset    | Database | Authentication |
+| --------- | -------- | -------------- |
+| app       | none     | none           |
+| app       | D1       | none           |
+| app       | D1       | Better Auth    |
+| app       | Neon     | none           |
+| app       | Neon     | Better Auth    |
+| fullstack | Neon     | none           |
+| fullstack | Neon     | Better Auth    |
 
-Fullstack, Neon, worker, extension, recipes, registry, upgrades, and coordinated rollback remain roadmap work. The preserved Hono and Neon code has focused local checks; those checks do not establish deployed preset support.
+Neon profiles use `@neondatabase/serverless` with Drizzle ORM and Postgres-native migrations. `DATABASE_URL` is validated at setup and used at runtime via a request-scoped pool helper.
+
+Worker, extension, recipes, registry, upgrades, and coordinated rollback remain roadmap work.
 
 ## Reference development
 
@@ -50,7 +56,14 @@ The generator and lifecycle CLI are distributed as matching downloadable tarball
 Once uploaded to GitHub Releases:
 
 ```powershell
+# D1 + Better Auth
 bunx --bun --package https://github.com/jojomensah89/flare-stack/releases/download/v0.14.1/create-flare-stack-0.14.1.tgz create-flare-stack my-app --db d1 --auth
+
+# Neon Postgres
+bunx --bun --package https://github.com/jojomensah89/flare-stack/releases/download/v0.14.1/create-flare-stack-0.14.1.tgz create-flare-stack my-app --db neon
+
+# Neon Postgres + Better Auth (fullstack)
+bunx --bun --package https://github.com/jojomensah89/flare-stack/releases/download/v0.14.1/create-flare-stack-0.14.1.tgz create-flare-stack my-app --db neon --auth --topology fullstack
 ```
 
 Generated projects pin `"flare"` directly to the GitHub release archive URL in their root `package.json`, which Bun installs natively.

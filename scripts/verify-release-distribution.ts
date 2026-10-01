@@ -118,21 +118,22 @@ try {
 
   console.log("4. Verifying project generation with HTTP archive dependencies...");
   const profiles = [
-    { name: "test-app", database: "none", auth: "none" },
-    { name: "test-d1", database: "d1", auth: "none" },
-    { name: "test-auth", database: "d1", auth: "better-auth" },
+    { name: "test-app", preset: "app", database: "none", auth: "none" },
+    { name: "test-d1", preset: "app", database: "d1", auth: "none" },
+    { name: "test-auth", preset: "app", database: "d1", auth: "better-auth" },
+    { name: "test-fullstack", preset: "fullstack", database: "d1", auth: "better-auth" },
   ] as const;
 
   for (const profile of profiles) {
     const projectDir = join(resolvedRootTemp, profile.name);
     console.log(
-      `   Generating profile \`${profile.name}\` (db: ${profile.database}, auth: ${profile.auth})...`,
+      `   Generating profile \`${profile.name}\` (preset: ${profile.preset}, db: ${profile.database}, auth: ${profile.auth})...`,
     );
 
     const parsed = parseArguments([
       projectDir,
       "--preset",
-      "app",
+      profile.preset,
       "--db",
       profile.database,
       `--auth=${profile.auth}`,
@@ -155,6 +156,12 @@ try {
       "Generated project devDependencies.flare must match the remote archive URL",
     );
 
+    if (profile.preset === "fullstack") {
+      assert.ok(
+        existsSync(join(projectDir, "apps/server/src/index.ts")),
+        "apps/server/src/index.ts must exist in fullstack",
+      );
+    }
     if (profile.database === "d1") {
       assert.ok(existsSync(join(projectDir, "packages/db")), "D1 packages/db must exist");
     }

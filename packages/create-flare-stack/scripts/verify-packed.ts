@@ -58,13 +58,21 @@ try {
     pathToFileURL(join(packedRoot, "src", "workflow.ts")).href
   )) as typeof import("../src/workflow");
   for (const profile of [
-    { name: "packed-app", database: "none", auth: "none" },
-    { name: "packed-d1", database: "d1", auth: "none" },
-    { name: "packed-auth", database: "d1", auth: "better-auth" },
+    { name: "packed-app", preset: "app", database: "none", auth: "none" },
+    { name: "packed-d1", preset: "app", database: "d1", auth: "none" },
+    { name: "packed-auth", preset: "app", database: "d1", auth: "better-auth" },
+    { name: "packed-fullstack-auth", preset: "fullstack", database: "d1", auth: "better-auth" },
   ]) {
     const destination = join(root, profile.name);
     const options = argsModule.makeProjectOptions(
-      argsModule.parseArguments([destination, "--db", profile.database, `--auth=${profile.auth}`]),
+      argsModule.parseArguments([
+        destination,
+        "--preset",
+        profile.preset,
+        "--db",
+        profile.database,
+        `--auth=${profile.auth}`,
+      ]),
     );
     await workflowModule.createProject(planModule.createProjectPlan(options), {
       skipValidationCommands: true,

@@ -233,7 +233,7 @@ export async function validateMaterializedProject(
   }
   const flareConfig = await readFile(join(root, "flare.config.ts"), "utf8").catch(() => "");
   const expectedConfig = [
-    /\bpreset\s*:\s*["']app["']/,
+    new RegExp(`\\bpreset\\s*:\\s*["']${plan.options.preset}["']`),
     new RegExp(`\\bflareVersion\\s*:\\s*["']${FLARE_VERSION.replaceAll(".", "\\.")}["']`),
     new RegExp(`\\bdatabase\\s*:\\s*["']${plan.options.database}["']`),
     new RegExp(`\\bauth\\s*:\\s*["']${plan.options.auth}["']`),
@@ -254,7 +254,14 @@ export async function validateMaterializedProject(
     );
   }
 
-  await assertPathAbsent(root, "apps/server", "dedicated Hono server");
+  if (plan.options.preset === "app") {
+    await assertPathAbsent(root, "apps/server", "dedicated Hono server");
+  } else {
+    await assertPathPresent(root, "apps/server", "dedicated Hono server");
+    await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
+    await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
+    await assertPathPresent(root, "apps/web/src/lib/server-client.ts", "Server RPC client");
+  }
   await assertPathAbsent(root, "packages/db/src/neon", "Neon implementation");
   await assertPathAbsent(root, "packages/db/drizzle.neon.config.ts", "Neon Drizzle configuration");
   await assertPathAbsent(root, "apps/web/src/server/auth.neon.ts", "Neon Better Auth integration");
@@ -272,6 +279,19 @@ export async function validateMaterializedProject(
         "Move D1 configuration into the D1 overlay.",
       );
     }
+    if (plan.options.preset === "fullstack") {
+      const serverWranglerText = await readFile(
+        join(root, "apps", "server", "wrangler.jsonc"),
+        "utf8",
+      ).catch(() => "");
+      if (serverWranglerText.includes("d1_databases")) {
+        throw new GenerationError(
+          "generated project validation",
+          "The no-database server contains a Wrangler D1 binding.",
+          "Move D1 configuration into the D1 overlay.",
+        );
+      }
+    }
   } else if (plan.options.database === "d1") {
     const dbPackage = join(root, "packages", "db", "package.json");
     const wranglerPath = join(root, "apps", "web", "wrangler.jsonc");
@@ -282,6 +302,17 @@ export async function validateMaterializedProject(
         "The D1 overlay is missing its Drizzle package or Wrangler D1 binding.",
         "Complete the D1 overlay before advertising `--db d1`.",
       );
+    }
+    if (plan.options.preset === "fullstack") {
+      const serverWranglerPath = join(root, "apps", "server", "wrangler.jsonc");
+      const serverWranglerText = await readFile(serverWranglerPath, "utf8").catch(() => "");
+      if (!serverWranglerText.includes("d1_databases")) {
+        throw new GenerationError(
+          "generated project validation",
+          "The fullstack D1 overlay is missing its Wrangler D1 binding on apps/server.",
+          "Complete the D1 overlay for fullstack before advertising `--preset fullstack --db d1`.",
+        );
+      }
     }
   }
 
@@ -297,6 +328,9 @@ export async function validateMaterializedProject(
       "apps/web/.preview.vars.example",
       "Better Auth Preview secret example",
     );
+    if (plan.options.preset === "fullstack") {
+      await assertPathAbsent(root, "apps/server/src/routes/auth.ts", "Server Better Auth routes");
+    }
   } else {
     for (const relativePath of [
       "apps/web/src/server/auth.ts",
@@ -331,6 +365,24 @@ export async function validateMaterializedProject(
         );
       }
     }
+
+    if (plan.options.preset === "fullstack") {
+      await assertPathPresent(root, "apps/server/src/routes/auth.ts", "Server Better Auth routes");
+      await assertPathPresent(root, "apps/server/.dev.vars.example", "Server dev vars example");
+      const serverWranglerText = await readFile(
+        join(root, "apps", "server", "wrangler.jsonc"),
+        "utf8",
+      );
+      const serverSecretDeclarations =
+        serverWranglerText.match(/"required"\s*:\s*\[\s*"BETTER_AUTH_SECRET"\s*\]/g) ?? [];
+      if (serverSecretDeclarations.length !== 3) {
+        throw new GenerationError(
+          "generated project validation",
+          "apps/server must declare BETTER_AUTH_SECRET at the top level and in development and Preview environments.",
+          "Keep Wrangler required-secret declarations aligned across production, development, and Preview.",
+        );
+      }
+    }
   }
 
   let hasBetterAuthDependency = false;
@@ -344,11 +396,13 @@ export async function validateMaterializedProject(
       ...Object.keys(manifest.devDependencies ?? {}),
     ];
     if (names.includes("hono") || names.includes("@repo/server")) {
-      throw new GenerationError(
-        "generated project validation",
-        `The app preset contains a Hono server dependency in ${relative(root, path)}.`,
-        "Remove fullstack-only dependencies from the app template.",
-      );
+      if (plan.options.preset === "app") {
+        throw new GenerationError(
+          "generated project validation",
+          `The app preset contains a Hono server dependency in ${relative(root, path)}.`,
+          "Remove fullstack-only dependencies from the app template.",
+        );
+      }
     }
     if (
       names.includes("@neondatabase/serverless") ||
@@ -417,6 +471,7 @@ export async function materializeProject(
   const values: TemplateValues = {
     PROJECT_NAME: plan.options.projectName,
     FLARE_VERSION,
+    PRESET: plan.options.preset,
     DATABASE: plan.options.database,
     AUTH: plan.options.auth,
     DB_ENABLED: String(plan.options.database !== "none"),

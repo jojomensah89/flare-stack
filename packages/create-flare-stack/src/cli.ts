@@ -13,22 +13,26 @@ Usage:
   bunx --bun --package ${release.generatorReleaseUrl} create-flare-stack <directory> [options]
 
 Supported in this release:
-  --preset app
+  --preset app|fullstack
   --db none|d1
   --auth                 Enable Better Auth (requires --db d1)
   --auth=none|better-auth
   --flare-package <path-or-url>
                          Use a local Flare package archive/directory or archive URL
 
-Fullstack, extension, worker, and Neon templates are not available in this release.
+Extension, worker, and Neon templates are not available in this release.
 `;
 
-async function collectInteractiveChoices<T extends { database?: string; auth?: string }>(
-  choices: T,
-): Promise<T> {
+async function collectInteractiveChoices<
+  T extends { preset?: string; database?: string; auth?: string },
+>(choices: T): Promise<T> {
   if (!stdin.isTTY || !stdout.isTTY) return choices;
   const ask = createInterface({ input: stdin, output: stdout });
   try {
+    if (!choices.preset) {
+      choices.preset =
+        (await ask.question("Preset (app/fullstack) [app]: ")).trim().toLowerCase() || "app";
+    }
     if (!choices.database) {
       choices.database =
         (await ask.question("Database (none/d1) [none]: ")).trim().toLowerCase() || "none";

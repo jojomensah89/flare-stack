@@ -3,8 +3,8 @@ import { FLARE_VERSION, type ProjectOptions, type ProjectPlan, UserInputError } 
 import { makeReleaseMetadata } from "./release";
 
 export function createProjectPlan(options: ProjectOptions): ProjectPlan {
-  if (options.preset !== "app") {
-    throw new UserInputError("This generator release supports only the app preset.");
+  if (options.preset !== "app" && options.preset !== "fullstack") {
+    throw new UserInputError("Supported presets: app, fullstack.");
   }
   if (String(options.database) !== "none" && String(options.database) !== "d1") {
     throw new UserInputError(
@@ -16,8 +16,21 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
   }
 
   const templateLayers = ["base", "app"];
-  if (options.database === "d1") templateLayers.push("db/d1");
-  if (options.auth === "better-auth") templateLayers.push("auth/better-auth");
+  if (options.preset === "fullstack") {
+    templateLayers.push("fullstack/common");
+  }
+  if (options.database === "d1") {
+    templateLayers.push("db/d1");
+    if (options.preset === "fullstack") {
+      templateLayers.push("fullstack/db-d1");
+    }
+  }
+  if (options.auth === "better-auth") {
+    templateLayers.push("auth/better-auth");
+    if (options.preset === "fullstack") {
+      templateLayers.push("fullstack/auth-better-auth");
+    }
+  }
 
   return {
     options,

@@ -54,7 +54,32 @@ assert.equal(
   "https://github.com/example/flare-stack/releases/download/v0.14.1/flare-0.14.1.tgz",
 );
 
-rejects(() => projectOptions(["--preset", "fullstack"]), /not available.*app/i);
+const fullstack = createProjectPlan(projectOptions(["--preset", "fullstack"]));
+assert.deepEqual(fullstack.templateLayers, ["base", "app", "fullstack/common"]);
+
+const fullstackD1 = createProjectPlan(projectOptions(["--preset", "fullstack", "--db", "d1"]));
+assert.deepEqual(fullstackD1.templateLayers, [
+  "base",
+  "app",
+  "fullstack/common",
+  "db/d1",
+  "fullstack/db-d1",
+]);
+
+const fullstackD1Auth = createProjectPlan(
+  projectOptions(["--preset", "fullstack", "--db", "d1", "--auth"]),
+);
+assert.deepEqual(fullstackD1Auth.templateLayers, [
+  "base",
+  "app",
+  "fullstack/common",
+  "db/d1",
+  "fullstack/db-d1",
+  "auth/better-auth",
+  "fullstack/auth-better-auth",
+]);
+
+rejects(() => projectOptions(["--preset", "worker"]), /not available.*app, fullstack/i);
 rejects(() => projectOptions(["--db", "neon"]), /Neon is planned.*none, d1/i);
 rejects(() => projectOptions(["--auth"]), /requires a database/i);
 rejects(() => projectOptions(["--db", "postgres"]), /Choose none or d1/i);
@@ -86,7 +111,7 @@ try {
       resolve(import.meta.dir, "../bin/create-flare-stack.ts"),
       unsupportedDestination,
       "--preset",
-      "fullstack",
+      "worker",
     ],
     { cwd: fixtureRoot, stdout: "pipe", stderr: "pipe" },
   );
@@ -96,7 +121,7 @@ try {
     new Response(cli.stderr).text(),
   ]);
   assert.equal(exitCode, 2, `${stdout}\n${stderr}`);
-  assert.match(stderr, /not available.*app/i);
+  assert.match(stderr, /not available.*app, fullstack/i);
   assert.equal(existsSync(unsupportedDestination), false);
 
   const packageDirectory = join(fixtureRoot, "flare-package");
@@ -138,4 +163,4 @@ try {
   rmSync(resolvedFixtureRoot, { recursive: true, force: true });
 }
 
-console.log("Planner validation passed for app, D1, and optional-auth combinations.");
+console.log("Planner validation passed for app, fullstack, D1, and optional-auth combinations.");

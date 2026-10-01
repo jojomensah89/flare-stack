@@ -20,9 +20,12 @@ if (!staticOnly && !flarePackagePath) {
 }
 
 const fixtures = [
-  { name: "app-no-db", database: "none", auth: "none" },
-  { name: "app-d1", database: "d1", auth: "none" },
-  { name: "app-d1-auth", database: "d1", auth: "better-auth" },
+  { name: "app-no-db", preset: "app", database: "none", auth: "none" },
+  { name: "app-d1", preset: "app", database: "d1", auth: "none" },
+  { name: "app-d1-auth", preset: "app", database: "d1", auth: "better-auth" },
+  { name: "fullstack-no-db", preset: "fullstack", database: "none", auth: "none" },
+  { name: "fullstack-d1", preset: "fullstack", database: "d1", auth: "none" },
+  { name: "fullstack-d1-auth", preset: "fullstack", database: "d1", auth: "better-auth" },
 ] as const;
 const fixtureRoot = await mkdtemp(join(tmpdir(), "flare-create-fixtures-"));
 const resolvedFixtureRoot = resolve(fixtureRoot);
@@ -40,7 +43,7 @@ try {
     const parsed = parseArguments([
       destination,
       "--preset",
-      "app",
+      fixture.preset,
       "--db",
       fixture.database,
       `--auth=${fixture.auth}`,

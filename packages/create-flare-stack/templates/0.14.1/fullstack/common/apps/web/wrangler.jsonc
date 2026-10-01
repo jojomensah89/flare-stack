@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "{{PROJECT_NAME}}-web",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  "vars": {
+    "FLARE_ENVIRONMENT": "production",
+  },
+  "services": [
+    {
+      "binding": "SERVER",
+      "service": "{{PROJECT_NAME}}-server",
+    },
+  ],
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "previews": {
+    "vars": {
+      "FLARE_ENVIRONMENT": "preview",
+    },
+    "services": [
+      {
+        "binding": "SERVER",
+        "service": "{{PROJECT_NAME}}-server-preview",
+      },
+    ],
+  },
+  "env": {
+    "development": {
+      "vars": {
+        "FLARE_ENVIRONMENT": "development",
+      },
+    },
+    "preview": {
+      "vars": {
+        "FLARE_ENVIRONMENT": "preview",
+      },
+      "services": [
+        {
+          "binding": "SERVER",
+          "service": "{{PROJECT_NAME}}-server-preview",
+        },
+      ],
+    },
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

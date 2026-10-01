@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "{{PROJECT_NAME}}-server",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "FLARE_ENVIRONMENT": "production",
+  },
+  "env": {
+    "development": {
+      "vars": {
+        "FLARE_ENVIRONMENT": "development",
+      },
+    },
+    "preview": {
+      "name": "{{PROJECT_NAME}}-server-preview",
+      "workers_dev": false,
+      "preview_urls": false,
+      "vars": {
+        "FLARE_ENVIRONMENT": "preview",
+      },
+    },
+  },
+}

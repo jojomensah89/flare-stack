@@ -1,7 +1,13 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, parse, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { FLARE_VERSION, type ParsedArguments, type ProjectOptions, UserInputError } from "./model";
+import {
+  FLARE_VERSION,
+  type ParsedArguments,
+  type Preset,
+  type ProjectOptions,
+  UserInputError,
+} from "./model";
 
 const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
@@ -102,9 +108,13 @@ export function validateProjectName(name: string): string {
 }
 
 export function validateRequestedChoices(parsed: ParsedArguments): void {
-  if (parsed.preset && parsed.preset.toLowerCase() !== "app") {
+  if (
+    parsed.preset &&
+    parsed.preset.toLowerCase() !== "app" &&
+    parsed.preset.toLowerCase() !== "fullstack"
+  ) {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported preset: app.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack.`,
     );
   }
   if (parsed.database) {
@@ -216,10 +226,10 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
     );
   }
 
-  const preset = (parsed.preset ?? "app").toLowerCase();
-  if (preset !== "app") {
+  const preset = (parsed.preset ?? "app").toLowerCase() as Preset;
+  if (preset !== "app" && preset !== "fullstack") {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported preset: app.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack.`,
     );
   }
 
@@ -293,7 +303,7 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   return {
     destination,
     projectName,
-    preset: "app",
+    preset,
     database: db,
     auth,
     ...(flarePackageTarget ? { flarePackagePath: flarePackageTarget } : {}),

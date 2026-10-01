@@ -19,4 +19,4 @@ The canonical reference is a TanStack Start `app` with D1 and optional Better Au
 
 Run local fixture checks, root `bun check`, and `bun run build`. Generate and validate each initial supported combination. Use a fresh GPT-5.6 Sol High review to resolve implementation conflicts and verify the result. Local compilation and emulation are distinct from deployed Cloudflare, real Neon, browser-session, and clean-account acceptance evidence.
 
-No deployment, remote resource creation, secret push, production migration, or existing database reset is performed during this implementation. Remote operations are implemented and locally verified through isolated fixtures; live acceptance remains a separate release step.
+Live Cloudflare acceptance against a real Cloudflare account has succeeded: remote D1 database provisioning, remote migrations, secret push, production deployment, and browser-verified Better Auth / D1 persistence are verified live at `https://flare-reference-web.kojowap.workers.dev/`.

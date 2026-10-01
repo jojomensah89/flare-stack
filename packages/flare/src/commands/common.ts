@@ -263,9 +263,30 @@ export function hasOption(args: string[], name: string): boolean {
 }
 
 export function parseJsonOutput(source: string, label: string): unknown {
+  const trimmed = source.trim();
   try {
-    return JSON.parse(source.trim());
+    return JSON.parse(trimmed);
   } catch {
+    const firstBrace = trimmed.indexOf("{");
+    const firstBracket = trimmed.indexOf("[");
+    const start =
+      firstBrace !== -1 && firstBracket !== -1
+        ? Math.min(firstBrace, firstBracket)
+        : firstBrace !== -1
+          ? firstBrace
+          : firstBracket;
+    const lastBrace = trimmed.lastIndexOf("}");
+    const lastBracket = trimmed.lastIndexOf("]");
+    const end = Math.max(lastBrace, lastBracket);
+
+    if (start !== -1 && end !== -1 && end > start) {
+      try {
+        return JSON.parse(trimmed.slice(start, end + 1));
+      } catch {
+        // Fall through to throw standard error
+      }
+    }
+
     throw new Error(
       `${label} returned output that was not valid JSON; refusing to infer remote state.`,
     );

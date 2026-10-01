@@ -1,6 +1,6 @@
 # Flare Stack
 
-A Cloudflare-first TypeScript starter and lifecycle CLI. This checkout is an implementation prerelease following the v0.14.1 specification. The current distribution direction is GitHub-hosted release archives, without publishing Flare packages to npm; that download flow is not implemented yet.
+A Cloudflare-first TypeScript starter and lifecycle CLI. This release follows the v0.14.1 specification, distributed via official GitHub Release archives and verified live on Cloudflare Workers with remote D1 persistence and Better Auth.
 
 ## Current scope
 
@@ -83,6 +83,27 @@ See [the distribution plan](docs/github-distribution-plan.md) for architecture r
 
 ## Cloudflare acceptance
 
-Local compilation, fake-runner lifecycle fixtures, and local auth behavior are separate from clean-account deployment, real Service Bindings, preview-secret persistence, and browser-session acceptance. Remote provisioning, secret pushes, migrations, and deployments must be invoked deliberately against the intended environment. Consult `flare --help` for the implemented command surface and remediation.
+The canonical reference application is deployed and verified live on Cloudflare Workers:
+
+- **Live URL**: [https://flare-reference-web.kojowap.workers.dev/](https://flare-reference-web.kojowap.workers.dev/)
+- **Health Check**: [https://flare-reference-web.kojowap.workers.dev/health](https://flare-reference-web.kojowap.workers.dev/health) (HTTP 200, `{ ok: true }`)
+- **Remote D1**: Production database `flare-reference-web-production` with Drizzle ORM migrations applied.
+- **Authentication**: Better Auth with dynamic origin allowlist and D1 database rate-limiting counters.
+
+To provision, migrate, and deploy to your Cloudflare account:
+
+```powershell
+# 1. Authenticate with Cloudflare
+bun x wrangler login
+
+# 2. Configure remote resources, hosts, and secrets
+bun run flare setup cloudflare --public-host <your-worker>.<subdomain>.workers.dev --preview-host *-(your-worker>.<subdomain>.workers.dev
+
+# 3. Apply remote migrations
+bun db:migrate:prod
+
+# 4. Deploy production Worker
+bun deploy
+```
 
 The normative design is [the Markdown v0.14.1 spec](docs/flare-stack-spec-v0.14.1.md). Its JSON companion describes the same intended full roadmap. [The implementation plan](docs/implementation-readiness-plan.md) records the approved narrower delivery sequence. [The implementation status](docs/implementation-status-v0.14.1.md) separates completed local evidence from remaining release work.

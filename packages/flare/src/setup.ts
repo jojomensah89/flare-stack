@@ -84,9 +84,13 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
     output.log("Git hooks were skipped because this directory has no .git entry.");
   }
 
-  const types = runner("wrangler", ["types", "--config", project.wranglerPath], {
-    cwd: webDirectory,
-  });
+  const types = runner(
+    "wrangler",
+    ["types", "--include-runtime=false", "--config", project.wranglerPath],
+    {
+      cwd: webDirectory,
+    },
+  );
   if (types.stdout.trim()) output.log(types.stdout.trimEnd());
   if (types.stderr.trim()) output.error(types.stderr.trimEnd());
   if (types.status !== 0) {

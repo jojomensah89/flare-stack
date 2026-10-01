@@ -115,7 +115,7 @@ export async function commandDoctor(
   const typesResult = runTool(
     deps,
     "wrangler",
-    withConfig(project, ["types", "--check"]),
+    withConfig(project, ["types", "--check", "--include-runtime=false"]),
     webDirectory(project),
     { env: clearCloudflareEnvironment(deps) },
   );

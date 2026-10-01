@@ -116,9 +116,15 @@ export async function commandSetupCloudflare(
   atomicWrite(project.wranglerPath, `${withHosts.trimEnd()}\n`);
   project = await loadProject(project.root);
   validateRemoteHosts(project);
-  const types = runTool(deps, "wrangler", withConfig(project, ["types"]), webDirectory(project), {
-    env: clearCloudflareEnvironment(deps),
-  });
+  const types = runTool(
+    deps,
+    "wrangler",
+    withConfig(project, ["types", "--include-runtime=false"]),
+    webDirectory(project),
+    {
+      env: clearCloudflareEnvironment(deps),
+    },
+  );
   printCommandOutput(output, types);
   assertCommandSucceeded(types, "Regenerate Cloudflare binding types after setup");
   if (production && preview) {

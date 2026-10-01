@@ -7,6 +7,7 @@ import {
   makeEnv,
   printCommandOutput,
   runTool,
+  serverDirectory,
   webDirectory,
   withBuiltDeploymentConfig,
   type CliDependencies,
@@ -70,6 +71,19 @@ export async function commandPreview(
   printCommandOutput(output, build);
   assertCommandSucceeded(build, "Preview build");
 
+  if (project.config.preset === "fullstack") {
+    output.log("Deploying backend server Worker Preview (apps/server)...");
+    const serverPreview = runTool(
+      deps,
+      "wrangler",
+      ["versions", "upload", "--env", "preview"],
+      serverDirectory(project),
+      { env: clearCloudflareEnvironment(deps) },
+    );
+    printCommandOutput(output, serverPreview);
+    assertCommandSucceeded(serverPreview, "Server Worker Preview deploy");
+  }
+
   const previewFlags: string[] = ["preview", "--json"];
   for (const flag of ["--name", "--tag", "--message"]) {
     const value = getOption(args, flag);
@@ -105,9 +119,10 @@ export async function commandPreview(
     );
     return 2;
   }
+  const healthPath = project.config.preset === "fullstack" ? "/api/health" : "/health";
   try {
-    await verifyAppHealth(publicUrl, deps.fetcher ?? fetch);
-    output.log(`Preview health checks passed for ${publicUrl}: root and /health.`);
+    await verifyAppHealth(publicUrl, deps.fetcher ?? fetch, 5, 1500, healthPath);
+    output.log(`Preview health checks passed for ${publicUrl}: root and ${healthPath}.`);
   } catch (error) {
     output.error(
       `Preview deployment succeeded, but health verification failed: ${error instanceof Error ? error.message : String(error)}`,

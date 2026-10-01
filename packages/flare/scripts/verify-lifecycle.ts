@@ -197,7 +197,17 @@ function createRunner(
         }),
       );
     }
+    if (subcommand === "versions" && args[1] === "upload") {
+      if (runOptions.cwd === join(root, "apps", "server")) {
+        return success(
+          "Uploaded version for fixture-server\nNo targets deployed for fixture-server",
+        );
+      }
+    }
     if (subcommand === "rollback") {
+      if (runOptions.cwd === join(root, "apps", "server")) {
+        return success("Rolled back fixture-server");
+      }
       assert.ok(
         args.includes("--config"),
         "rollback uses the source config and does not need a fresh build",
@@ -638,6 +648,66 @@ async function verifyFullstackDeployment(): Promise<void> {
     assert.ok(
       healthChecks.includes("/api/health"),
       "Health check must verify /api/health for fullstack",
+    );
+
+    // Verify preview for fullstack
+    calls.length = 0;
+    healthChecks.length = 0;
+    const previewStatus = await runCli(["preview"], deps);
+    assert.equal(previewStatus, 0);
+    assert.equal(errors.length, 0);
+    const serverPreview = calls.find(
+      (call) =>
+        call.command === "wrangler" &&
+        call.cwd === serverDir &&
+        call.args[0] === "versions" &&
+        call.args[1] === "upload",
+    );
+    const webPreview = calls.find(
+      (call) =>
+        call.command === "wrangler" &&
+        call.cwd === join(root, "apps", "web") &&
+        call.args[0] === "preview",
+    );
+    assert.ok(serverPreview, "Must upload preview version for apps/server");
+    assert.ok(webPreview, "Must deploy preview Worker for apps/web");
+    assert.ok(
+      calls.indexOf(serverPreview) < calls.indexOf(webPreview),
+      "Server preview version must be uploaded before web preview",
+    );
+    assert.ok(
+      healthChecks.includes("/api/health"),
+      "Preview health check must verify /api/health for fullstack",
+    );
+
+    // Verify rollback for fullstack
+    calls.length = 0;
+    healthChecks.length = 0;
+    const rollbackStatus = await runCli(
+      ["rollback", "--url", `https://${fixtureWorker}.workers.dev`],
+      deps,
+    );
+    assert.equal(rollbackStatus, 0);
+    assert.equal(errors.length, 0);
+    const serverRollback = calls.find(
+      (call) =>
+        call.command === "wrangler" && call.cwd === serverDir && call.args[0] === "rollback",
+    );
+    const webRollback = calls.find(
+      (call) =>
+        call.command === "wrangler" &&
+        call.cwd === join(root, "apps", "web") &&
+        call.args[0] === "rollback",
+    );
+    assert.ok(serverRollback, "Must rollback apps/server");
+    assert.ok(webRollback, "Must rollback apps/web");
+    assert.ok(
+      calls.indexOf(serverRollback) < calls.indexOf(webRollback),
+      "Server Worker must be rolled back before web Worker",
+    );
+    assert.ok(
+      healthChecks.includes("/api/health"),
+      "Rollback health check must verify /api/health for fullstack",
     );
   });
 }

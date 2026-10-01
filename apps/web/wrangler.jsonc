@@ -11,13 +11,13 @@
     {
       "binding": "DB",
       "database_name": "flare-reference-web-production",
-      "database_id": "00000000-0000-0000-0000-000000000001",
+      "database_id": "f41f0b95-11eb-4e53-b85e-c8c9f5f3d99b",
       "migrations_dir": "../../packages/db/migrations",
     },
   ],
   "vars": {
     "FLARE_ENVIRONMENT": "production",
-    "AUTH_ALLOWED_HOSTS": "__SET_AUTH_ALLOWED_HOSTS__",
+    "AUTH_ALLOWED_HOSTS": "flare-reference-web.kojowap.workers.dev",
     "AUTH_PROTOCOL": "https",
   },
   "assets": {
@@ -28,14 +28,14 @@
   "previews": {
     "vars": {
       "FLARE_ENVIRONMENT": "preview",
-      "AUTH_ALLOWED_HOSTS": "__SET_AUTH_ALLOWED_HOSTS__",
+      "AUTH_ALLOWED_HOSTS": "*-flare-reference-web.kojowap.workers.dev",
       "AUTH_PROTOCOL": "https",
     },
     "d1_databases": [
       {
         "binding": "DB",
         "database_name": "flare-reference-web-preview",
-        "database_id": "00000000-0000-0000-0000-000000000002",
+        "database_id": "b97c15dd-b97f-4d59-b096-255a1bbf6890",
         "migrations_dir": "../../packages/db/migrations",
       },
     ],
@@ -65,14 +65,14 @@
       },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
-        "AUTH_ALLOWED_HOSTS": "__SET_AUTH_ALLOWED_HOSTS__",
+        "AUTH_ALLOWED_HOSTS": "*-flare-reference-web.kojowap.workers.dev",
         "AUTH_PROTOCOL": "https",
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "flare-reference-web-preview",
-          "database_id": "00000000-0000-0000-0000-000000000002",
+          "database_id": "b97c15dd-b97f-4d59-b096-255a1bbf6890",
           "migrations_dir": "../../packages/db/migrations",
         },
       ],

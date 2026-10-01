@@ -122,16 +122,14 @@ export function remoteSecretNames(
   if (result.status !== 0) {
     // Wrangler converts API 10007 to this specific UserError, omitting the code.
     // Only first setup may bootstrap a missing Worker; all other errors fail closed.
-    const missingWorkerMessage = `Worker "${workerName}" not found.\n\nIf this is a new Worker, run \`wrangler deploy\` first to create it.\nOtherwise, check that the Worker name is correct and you're logged into the right account.`;
     const diagnostic = stripVTControlCharacters(`${result.stdout}\n${result.stderr}`).replaceAll(
       "\r\n",
       "\n",
     );
-    if (
-      allowNewWorker &&
-      environment === "production" &&
-      diagnostic.includes(missingWorkerMessage)
-    ) {
+    const isMissingWorker =
+      diagnostic.includes(`Worker "${workerName}" not found`) ||
+      diagnostic.includes(`Worker '${workerName}' not found`);
+    if (allowNewWorker && environment === "production" && isMissingWorker) {
       return [];
     }
     throw commandError(result, `List ${environment} secrets`);

@@ -1,0 +1,956 @@
+{
+  "name": "Flare Stack",
+  "version": "0.14",
+  "status": "frozen implementation specification (review-complete: draft-Worker secret bootstrap, production auth allowlist isolation, single-build Workers Builds path)",
+  "verified_on": "2026-09-30",
+  "goal": "Cloudflare-first startup pack with a few proven project shapes, exact pinned dependencies, local quality gates, structured observability, isolated environments, recoverable lifecycle commands, and simple Cloudflare deployment without default testing-framework bloat.",
+  "package_manager": "bun",
+  "workspace": {
+    "manager": "bun-workspaces",
+    "orchestration": "turborepo",
+    "layout": ["apps/*", "packages/*"]
+  },
+  "presets": {
+    "app": {
+      "frontend": "TanStack Start + React 19",
+      "backend": "TanStack Start server functions/routes",
+      "runtime": "Cloudflare Workers",
+      "deployables": ["apps/web"]
+    },
+    "fullstack": {
+      "frontend": "React 19 + TanStack Router + TanStack Query",
+      "backend": "Hono",
+      "runtime": "Cloudflare Workers",
+      "deployables": ["apps/web", "apps/server"],
+      "internal_api_contract": "Hono RPC",
+      "public_api_docs": "optional OpenAPI/Scalar recipe, not base",
+      "browser_origin": "apps/web Worker is the single public browser origin",
+      "networking": {
+        "browser_api_base": "/api",
+        "production": "apps/web forwards /api/* to apps/server through a Cloudflare Service Binding; server is not publicly exposed",
+        "local": "Cloudflare Vite auxiliaryWorkers runs web + server locally through the same Service Binding topology",
+        "server_public_url_required": false,
+        "cors_for_first_party_web": false,
+        "better_auth_cookie_model": "first-party cookie on the web origin",
+        "optional_public_api": "explicit recipe/capability only",
+        "preview": "persistent Wrangler env.preview pair: web-preview -> server-preview; no branch Worker Previews in v1",
+        "server_production_exposure": {
+          "workers_dev": false,
+          "preview_urls": false,
+          "routes": []
+        },
+        "assets_run_worker_first": ["/api/*"],
+        "forward_request": "forward original Request object via env.SERVER.fetch(request)",
+        "better_auth_base_url": "browser-facing web origin in local, preview, and production"
+      },
+      "type_dependency": "apps/web declares apps/server as an explicit workspace dependency for type-only Hono AppType imports"
+    },
+    "extension": {
+      "frontend": "WXT + React 19",
+      "backend": null,
+      "deployables": [],
+      "distribution": "browser extension package/store",
+      "backend_policy": "extension-only in v1; backend is a separate worker/fullstack Flare project"
+    },
+    "worker": {
+      "backend": "Hono",
+      "runtime": "Cloudflare Workers",
+      "deployables": ["apps/server"]
+    }
+  },
+  "database": {
+    "orm": "Drizzle",
+    "providers": {
+      "none": {
+        "supported": true
+      },
+      "d1": {
+        "supported": true,
+        "runtime": "Cloudflare D1",
+        "better_auth_provider": "sqlite",
+        "local_persistence": "repo-root .wrangler/state shared by Vite persistState and Wrangler --persist-to",
+        "local_state": ".wrangler/state",
+        "preview_migrations": "automatic before bun preview"
+      },
+      "neon": {
+        "supported": true,
+        "runtime": "Neon Postgres",
+        "better_auth_provider": "pg",
+        "driver": "@neondatabase/serverless + Drizzle neon-serverless",
+        "reason": "transaction-capable baseline for Better Auth; release-tested on Cloudflare Workers",
+        "client_lifecycle": "request scoped; create pool/db inside request, perform work, then invoke pool.end() in finally and schedule its promise with ctx.waitUntil",
+        "preview": "manual preview URL in v1",
+        "vendor_guidance": "Neon and Cloudflare recommend Hyperdrive + native pg/Postgres.js on Workers",
+        "v1_default": "neon-serverless kept deliberately (no extra Cloudflare resource); documented trade-off",
+        "hyperdrive_recipe": {
+          "phase": "post-v1 first database recipe",
+          "driver": "pg or Postgres.js + matching Drizzle driver",
+          "connection": "Neon direct (non-pooled) string",
+          "binding": "hyperdrive per environment; no runtime DATABASE_URL secret",
+          "local": "localConnectionString or CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_<BINDING>",
+          "switch_default_if": "fixture shows connection errors, unacceptable latency, or Better Auth transaction problems"
+        },
+        "client_factory": "withDb(env, ctx, run): create Pool + Drizzle per request; await run(db); finally ctx.waitUntil(pool.end())",
+        "fixture": "two consecutive deployed requests plus Better Auth request prove no premature cleanup or cross-request connection reuse"
+      }
+    },
+    "production_migrations": {
+      "automatic": false,
+      "preflight": true,
+      "fresh_zero_applied": "pending",
+      "destructive_guard": ["DROP", "RENAME"],
+      "override": "--allow-destructive"
+    },
+    "commands": [
+      "bun db:generate",
+      "bun db:migrate",
+      "bun db:migrate:preview",
+      "bun db:migrate:prod",
+      "bun db:seed",
+      "bun db:reset",
+      "bun db:studio"
+    ]
+  },
+  "auth": {
+    "optional": true,
+    "provider": "Better Auth",
+    "requires_database": true,
+    "baseline": [
+      "email/password",
+      "sessions",
+      "sign in",
+      "sign up",
+      "sign out",
+      "protected route helpers",
+      "secure production cookies",
+      "trusted origins"
+    ],
+    "later_recipes": [
+      "email verification",
+      "password reset",
+      "OAuth providers",
+      "organizations",
+      "2FA",
+      "passkeys"
+    ],
+    "transaction_policy": "Neon uses transaction-capable driver; D1 Better Auth + Drizzle behavior is release-fixture-gated on pinned versions instead of inventing custom adapter semantics",
+    "rate_limit": {
+      "enabled_in_production": true,
+      "storage": "database",
+      "ip_header": "cf-connecting-ip",
+      "schema": "rateLimit table via Drizzle",
+      "fixture": "must limit across separate Worker requests/isolate executions",
+      "enabled": "explicit true (never rely on environment-mode default)",
+      "custom_rules": {
+        "/get-session": false
+      },
+      "reason_get_session_exempt": "avoid a DB write on every session check (D1 row-write quota)",
+      "defaults_kept": "global 60s/100; Better Auth stricter sign-in rules; IPv6 /64",
+      "server_side_auth_api_calls": "not rate limited",
+      "kv_secondary_storage": "explicit later recipe"
+    },
+    "base_url": {
+      "mode": "dynamic allowlist",
+      "better_auth_option": "baseURL.allowedHosts + protocol from AUTH_PROTOCOL (never auto)",
+      "env_var": "AUTH_ALLOWED_HOSTS (non-secret Wrangler var)",
+      "better_auth_url_env": false,
+      "unknown_hosts": "fail closed; no fallback by default",
+      "setup": "flare setup cloudflare resolves production workers.dev host, preview_url_suffix/persistent preview host, and configured custom domains",
+      "single_worker_preview_pattern": "*-<worker-name>.<account-subdomain>.workers.dev (matches Preview URL and deployment URLs; 63-char DNS label limit)",
+      "local": "explicit known ports, e.g. localhost:5173; Better Auth supports port wildcards but Flare intentionally emits exact ports for a narrower allowlist",
+      "trusted_origins": "derived automatically by Better Auth from allowedHosts",
+      "protocol": {
+        "env_var": "AUTH_PROTOCOL (non-secret Wrangler var)",
+        "local": "http",
+        "deployed": "https",
+        "reason": "with auto/unset, cookie Secure flag falls back to NODE_ENV===\"production\", unreliable in Worker bundles"
+      },
+      "forwarded_headers": "advanced.trustedProxyHeaders left off; Better Auth version pinned; spoofed X-Forwarded-Host/Host outside allowlist must be rejected",
+      "social_login_limit": "not supported on per-branch Worker Previews in v1 (single registered OAuth callback); works on production and persistent fullstack preview with separate OAuth apps; email/password works everywhere",
+      "local_values": "generated Wrangler env.development selected only by bun dev (CLOUDFLARE_ENV=development inline); vars AUTH_ALLOWED_HOSTS=localhost:<port>, AUTH_PROTOCOL=http; blocks generated from one template; doctor checks parity; build/deploy never inherit CLOUDFLARE_ENV"
+    }
+  },
+  "ui": {
+    "tailwind": "v4",
+    "components": "shadcn/ui",
+    "primitives": "Base UI",
+    "shared_package": "packages/ui",
+    "design_system_lint": {
+      "package": "@shadcn/lint",
+      "role": "specialized UI/design-system lint; does not replace Biome",
+      "host": "minimal ESLint configuration for v1",
+      "reason_for_eslint": "Oxlint JS plugin API is currently alpha; prefer conservative integration for v1",
+      "default_rules": [
+        "shadcn/no-restyle",
+        "shadcn/no-raw-colors",
+        "shadcn/no-arbitrary-values",
+        "shadcn/no-inline-styles",
+        "shadcn/no-unknown-classes",
+        "shadcn/require-static-classes"
+      ],
+      "monorepo_ui_path": "packages/ui/src/components/**",
+      "command": "bun ui:lint"
+    }
+  },
+  "quality": {
+    "formatter_linter": "Biome (general)",
+    "typecheck": "TypeScript strict",
+    "git_hooks": {
+      "pre_commit": "staged Biome + staged shadcn lint",
+      "pre_push": "bun check",
+      "strict_optional": "bun run verify",
+      "install": "bun setup",
+      "missing_hook_warning": "bun dev and flare doctor"
+    },
+    "github_actions_generated": false,
+    "design_system_linter": "@shadcn/lint via minimal ESLint config; remove ESLint when a stable standalone/Oxlint path has equivalent coverage",
+    "cross_platform": {
+      "required": ["windows", "macos", "linux"],
+      "rule": "generator/setup scripts use Bun/TypeScript instead of Unix-only shell assumptions"
+    },
+    "testing_policy": {
+      "default_framework": null,
+      "generated_test_files": false,
+      "generated_test_scripts": false,
+      "principle": "Add testing deliberately per project; no Vitest/Playwright/browser binaries in the base scaffold."
+    }
+  },
+  "deployment": {
+    "provider": "Cloudflare",
+    "cloudflare_config": "wrangler.jsonc (v1 default); cloudflare.config.ts experimental opt-in",
+    "cli_strategy": {
+      "preferred": "pinned Wrangler",
+      "experimental_opt_in": "pinned cf CLI + cloudflare.config.ts",
+      "public_command": "bun deploy",
+      "reason": "cf was released as open beta on 2026-09-28; v1 defaults to the stable Wrangler path"
+    },
+    "production_branch": "main",
+    "paths": {
+      "local": {
+        "enabled": true,
+        "command": "bun deploy",
+        "steps": [
+          "bun run verify",
+          "remote migration preflight when DB exists",
+          "flare deploy",
+          "wrangler deploy"
+        ]
+      },
+      "cloudflare_git": {
+        "enabled": true,
+        "github_actions_required": false,
+        "service": "Cloudflare Workers Builds",
+        "trigger": "push/merge to production branch",
+        "build_command": "preset-specific: bun run verify for single-deployable presets; bun check for fullstack",
+        "deploy_command": "bun run deploy:cloudflare",
+        "fullstack_connection": "connect only public web Worker; custom deploy command orchestrates server then web",
+        "fullstack_build_ownership": "deploy command owns the single production Vite build; Workers Builds build command does not pre-build fullstack"
+      }
+    },
+    "previews": {
+      "default": "topology-aware",
+      "single_worker_presets": "Cloudflare Worker Previews with explicit previews bindings for mutable resources",
+      "fullstack": "persistent env.preview pair built by one CLOUDFLARE_ENV=preview Vite build (web + auxiliary server); flare secrets push --env preview uses wrangler secret bulk --name <server-preview-worker-name> before first deploy and for updates; pinned Wrangler may create the draft server-preview Worker; server deploys first, then web",
+      "fullstack_branch_worker_previews": false,
+      "reason": "Cloudflare Preview Service Bindings currently resolve to downstream production deployments",
+      "fullstack_concurrency": "one shared persistent preview pair in v1; concurrent branches can overwrite it",
+      "preview_security": "X-Robots-Tag noindex,nofollow; Cloudflare Access recommended/opt-in for sensitive previews",
+      "single_worker_preview_secrets": "flare secrets push --env preview validates .preview.vars then uses wrangler preview base-config secret bulk; bun preview runs wrangler preview without --secrets-file; per-Preview overrides use wrangler preview secret bulk --name",
+      "single_worker_preview_secret_update_semantics": "Preview Base secret changes affect newly created Previews only; active Preview override is explicit",
+      "single_worker_preview_secret_verification": "after every wrangler preview: wrangler preview secret list --name <preview>, compare to secrets.required, repair once via wrangler preview secret bulk --name, re-list, fail if still missing",
+      "previews_block_required": "always generate previews block for app/worker (empty if no Preview-specific bindings)"
+    },
+    "scripts": {
+      "dev": "preset-specific; fullstack runs web only because Vite auxiliaryWorkers starts server",
+      "build": "turbo run build",
+      "typecheck": "turbo run typecheck",
+      "lint": "biome check .",
+      "check": "bun run typecheck && bun run lint && bun run ui:lint",
+      "verify": "bun run check && bun run build",
+      "preview": "flare preview",
+      "deploy": "flare deploy",
+      "deploy:cloudflare": "flare deploy --cloudflare-only",
+      "ui:lint": "eslint . --max-warnings=0",
+      "setup": "flare setup",
+      "ui:lint:staged": "node scripts/ui-lint-staged.mjs"
+    },
+    "post_deploy_health_check": {
+      "enabled": true,
+      "checks": [
+        "root document for web presets",
+        "/health for server-capable presets",
+        "/api/health through public web origin for fullstack"
+      ],
+      "non_destructive": true,
+      "rollback_available_on_failure": true
+    },
+    "fullstack": {
+      "browser_origin": "web Worker only",
+      "routes": "/api/* forwarded via Service Binding; Hono basePath(/api)",
+      "server_public_exposure": false,
+      "build": "single Vite build from apps/web includes auxiliary server Worker",
+      "production_env": "top-level Wrangler config; CLOUDFLARE_ENV must be unset",
+      "preview_env": "command-scoped CLOUDFLARE_ENV=preview at Vite build time",
+      "deploy_order": ["generated auxiliary server", "generated entry/web"],
+      "web_deploy_cwd": "apps/web",
+      "preview_pair": "persistent web-preview -> server-preview -> preview resources",
+      "branch_previews": false,
+      "branch_preview_guard": "bun run cloudflare:branch-preview-guard exits without uploading",
+      "health": "root + /api/health"
+    },
+    "compatibility_date_policy": "pin per Flare release; omit redundant nodejs_compat flags for >=2026-08-04",
+    "first_deploy": {
+      "order": [
+        "authenticate",
+        "provision production+preview mutable resources",
+        "write resource IDs to wrangler.jsonc",
+        "collect required secrets",
+        "wrangler secret bulk to explicit production Worker name (draft Worker may be created when absent)",
+        "apply production migrations",
+        "build",
+        "ordered Worker deploys",
+        "health checks"
+      ],
+      "fullstack_secret_owner": "server receives required secrets via explicit-name secret bulk before first deploy; web declares no required auth/database secrets",
+      "doctor": "detects missing required remote secret names and prints flare secrets push --env production",
+      "canonical": "authenticate -> provision resources -> write IDs -> collect secrets -> secret bulk -> apply production migrations -> build -> ordered Worker deploys -> health checks",
+      "owners": {
+        "flare setup cloudflare": "authenticate, provision, write IDs, collect/generate secrets in memory, push with wrangler secret bulk, apply first production migrations after confirmation, offer immediate first deploy",
+        "bun deploy": "migration preflight, build, ordered deploy, health checks; fails with flare secrets push remediation when required remote secrets are missing"
+      },
+      "secret_bootstrap": "flare secrets push --env production streams values to wrangler secret bulk; no resumable plaintext production-secret file",
+      "why_secret_bulk": "current pinned Wrangler can create a draft Worker when the target does not exist; Flare fixture-tests this behavior before release"
+    },
+    "production_guard": {
+      "CLOUDFLARE_ENV_must_be_unset": true,
+      "verify_flattened_worker_name": true,
+      "WORKERS_CI_BRANCH_must_equal_productionBranch_in_Workers_Builds": true,
+      "productionBranch_source": "flare.config.ts"
+    },
+    "preview_migrations": "automatic before preview code deployment",
+    "health_response": {
+      "ok": true,
+      "no_schema_or_version_detail": true
+    },
+    "rollback": {
+      "release_tag": "flare:<release-id>",
+      "order": ["web", "server"],
+      "database": "unchanged"
+    },
+    "aux_config_lookup": "read dist/*/wrangler.json and match name field; never assume directory name"
+  },
+  "cloudflare_setup": {
+    "command": "flare setup cloudflare",
+    "responsibilities": [
+      "verify authentication",
+      "resolve/create Workers",
+      "provision supported resources where safe",
+      "configure D1/R2/etc bindings",
+      "regenerate Cloudflare types",
+      "validate production environment",
+      "print production URLs",
+      "guide Git repository connection to Workers Builds",
+      "print required Cloudflare build/deploy commands",
+      "disable Preview Builds/non-production branch builds for fullstack connected web Worker",
+      "use repository root and no narrowed watch paths for fullstack connected build",
+      "push required preview/production secrets before first code deploy",
+      "configure Workers Builds via API only where supported; otherwise print exact dashboard values (production branch, non-production builds off or guard command, root directory, build/deploy commands, Neon MIGRATION_STATUS_DATABASE_URL build secret)",
+      "create .preview.vars from example with generated preview secrets"
+    ],
+    "default_cli": "Wrangler",
+    "default_config": "wrangler.jsonc",
+    "experimental_cf": {
+      "enabled_by_default": false,
+      "command": "flare cloudflare experimental-cf enable",
+      "requires_release_fixture_validation": true
+    },
+    "first_deploy_order": [
+      "authenticate",
+      "provision production+preview mutable resources",
+      "write resource IDs to wrangler.jsonc",
+      "collect required secrets",
+      "wrangler secret bulk to explicit production Worker",
+      "apply production migrations",
+      "build",
+      "ordered Worker deploys",
+      "health checks"
+    ],
+    "neon_v1": "user supplies preview and production URLs; no Neon management API credential",
+    "fullstack_workers_builds": {
+      "production_branch_only": true,
+      "preview_command": "bun run cloudflare:branch-preview-guard",
+      "root": "repo root",
+      "narrow_watch_paths": false
+    }
+  },
+  "skills": {
+    "canonical_directory": ".agents/skills",
+    "always": ["flare-project", "cloudflare/workers-best-practices"],
+    "web": ["shadcn official skill", "flare-web", "shadcn-lint guidance"],
+    "app": ["TanStack Start guidance"],
+    "auth": ["Better Auth official skills"],
+    "d1": ["Cloudflare D1 guidance"],
+    "extension": ["flare-wxt"],
+    "mcp": ["MCP/Cloudflare Agents guidance"],
+    "server": ["evlog guidance", "Cloudflare structured logging/redaction conventions"]
+  },
+  "root_commands": [
+    "bun dev",
+    "bun run build",
+    "bun check",
+    "bun run verify",
+    "bun format",
+    "bun preview",
+    "bun deploy",
+    "bun setup",
+    "bun run ui:lint",
+    "flare logs",
+    "flare tail",
+    "flare deployments",
+    "flare rollback",
+    "flare upgrade --dry-run",
+    "flare setup cloudflare",
+    "bun db:migrate:preview"
+  ],
+  "principles": [
+    "project shape first",
+    "opinionated defaults",
+    "generated projects stay boring",
+    "local development is a product feature",
+    "Cloudflare is the deployment target",
+    "agent-native by default",
+    "no GitHub Actions by default",
+    "direct local deployment is first-class",
+    "structured observability by default",
+    "agent-verifiable design-system rules",
+    "operations and upgrades are part of the starter contract",
+    "mutating commands are Git-aware and recoverable",
+    "no testing framework by default",
+    "fullstack keeps one public browser origin and uses a Service Binding to the server Worker",
+    "Wrangler is the v1 default; cf is experimental opt-in",
+    "production deploys are blocked while required database migrations are pending",
+    "pre-commit stays staged and fast; full typecheck happens pre-push; build happens at explicit verify/deploy time",
+    "manifest stores architectural intent; wrangler stores concrete Cloudflare deployment state",
+    "fullstack preview is a single persistent shared v1 environment, not per-branch isolation"
+  ],
+  "project_manifest": {
+    "file": "flare.config.ts",
+    "schema_version": 1,
+    "source_of_truth_for": [
+      "preset",
+      "capabilities",
+      "providers",
+      "environment names",
+      "Flare/template versions",
+      "productionBranch"
+    ],
+    "not_source_of_truth_for": [
+      "Worker names",
+      "Cloudflare resource IDs",
+      "routes",
+      "Service Binding targets",
+      "vars",
+      "required-secret names"
+    ],
+    "cloudflare_concrete_state": "wrangler.jsonc"
+  },
+  "observability": {
+    "default_server_logger": "evlog",
+    "enabled_for_presets": ["app", "fullstack", "worker"],
+    "extension_behavior": "browser code excluded; v1 extension preset has no server workspace",
+    "development_output": "pretty",
+    "production_output": "structured JSON",
+    "destination": "Cloudflare Workers Logs by default; optional explicit drains later",
+    "principles": [
+      "wide request/job events",
+      "structured errors",
+      "typed fields",
+      "redaction",
+      "no secrets",
+      "avoid ad-hoc server console.log"
+    ],
+    "commands": ["flare logs", "flare tail", "flare doctor observability"],
+    "shared_package": "packages/observability where useful",
+    "wrangler_config": {
+      "observability": {
+        "enabled": true
+      }
+    },
+    "fullstack_request_id": "propagate one request ID across Service Binding; web forwarder avoids duplicate full request events"
+  },
+  "operations": {
+    "environments": ["local", "preview", "production"],
+    "bootstrap_command": "bun setup",
+    "secrets_commands": [
+      "flare env check",
+      "flare secrets list",
+      "flare secrets push",
+      "flare secrets generate BETTER_AUTH_SECRET --env production"
+    ],
+    "database_commands": [
+      "bun db:generate",
+      "bun db:migrate",
+      "bun db:migrate:preview",
+      "bun db:migrate:prod",
+      "bun db:seed",
+      "bun db:reset",
+      "bun db:studio",
+      "flare db status --env production"
+    ],
+    "operations_commands": [
+      "flare deployments",
+      "flare logs",
+      "flare tail",
+      "flare rollback",
+      "flare resources",
+      "flare preview clean"
+    ],
+    "upgrade_commands": ["flare upgrade --dry-run", "flare upgrade"],
+    "mutations": {
+      "local": "transactional where practical",
+      "remote": "last, idempotent, recorded, never auto-reverted"
+    },
+    "security_defaults": {
+      "server_secrets": "never client",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Content-Security-Policy-Report-Only": "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "preview": "X-Robots-Tag: noindex, nofollow",
+        "X-Frame-Options": "DENY (enforcing while CSP is Report-Only)",
+        "HSTS": "not emitted by base scaffold; explicit custom-domain hardening only"
+      },
+      "auth_rate_limit": "explicit database storage + cf-connecting-ip + /get-session exempt",
+      "public_health": "only {ok:true}",
+      "header_implementation": {
+        "static": "generated _headers (static assets only); preview build adds X-Robots-Tag; production build never does",
+        "api": "explicit Hono middleware emits exactly Flare baseline; never bare secureHeaders(); if secureHeaders(options) is used, every unrelated default is disabled and output is fixture-tested",
+        "csp_reports": "browser console only in v1; no reporting endpoint",
+        "hsts": "absent in base v1 on workers.dev and custom domains until deliberately enabled"
+      }
+    },
+    "environment_database_rules": {
+      "d1": {
+        "local": "canonical repo-root .wrangler/state shared by Vite and Wrangler migration commands",
+        "preview": "preview D1 resource",
+        "production": "production D1 resource"
+      },
+      "neon": {
+        "local": "non-production database/branch",
+        "preview": "isolated preview branch/database",
+        "production": "production branch/database",
+        "driver": "drizzle-orm/neon-serverless + @neondatabase/serverless"
+      },
+      "cleanup_rule": "preview cleanup must never mutate production resources"
+    },
+    "rollback": {
+      "release_tag": "flare:<release-id>",
+      "order": ["web", "server"],
+      "database": "unchanged",
+      "retention": "refuse if either recorded version is no longer retained; never mix with a mismatched partner"
+    },
+    "preview_secrets": {
+      "file": ".preview.vars (gitignored, secrets only)",
+      "example": ".preview.vars.example (committed, names only)",
+      "commands": [
+        "flare secrets generate <NAME> --env preview",
+        "flare secrets push --env preview"
+      ],
+      "used_by": [
+        "Worker Preview Base configuration for app/worker",
+        "fullstack server-preview normal environment deploy/secret path",
+        "bun db:migrate:preview for Neon"
+      ],
+      "never_mixed_with": ".dev.vars and production values",
+      "strategy": {
+        "app_worker_previews": "wrangler preview base-config secret bulk; per-preview override via wrangler preview secret bulk --name",
+        "fullstack_persistent_preview": "wrangler secret bulk <file> --name <server-preview-worker-name> before first deploy and for updates; pinned Wrangler draft-creates target when absent"
+      }
+    }
+  },
+  "versioning": {
+    "pin_release_dependencies": true,
+    "pin": "exact tested React/TanStack/Wrangler/Cloudflare Vite/shadcn/etc.; cf only if experimental",
+    "project_records": ["flareVersion", "schemaVersion"],
+    "dependency_ranges": "exact tested versions for Flare-owned core dependencies at scaffold time",
+    "upgrade_owner": "flare upgrade",
+    "compatibility": {
+      "wrangler_worker_previews_min": "4.135.0",
+      "cloudflare_vite_plugin": "exact tested version per Flare release; no unverified minimum",
+      "compatibility_date": "pinned per release",
+      "nodejs_compat": ">=2026-08-04 enabled by date; redundant flags warned/normalized, not treated as runtime errors",
+      "node_types": "@types/node when dependency graph requires Node builtin types",
+      "wrangler_preview_base_config_secrets_min": "4.121.0 (covered by 4.135.0 Worker Previews floor)",
+      "wrangler_secret_bulk_draft_bootstrap": "pinned-version release fixture; current Wrangler creates a draft Worker when the named Worker does not exist"
+    }
+  },
+  "v1_completion_criteria": [
+    "app preset scaffolds and deploys",
+    "D1 and Neon profiles work",
+    "Better Auth works on D1 and Neon",
+    "fullstack, extension, and worker presets work",
+    "bun setup restores a cloned repo",
+    "local/preview/production resources are isolated",
+    "@shadcn/lint is part of web quality gates",
+    "evlog is wired in server-capable presets",
+    "direct local and Cloudflare Git deployment work",
+    "logs, rollback, doctor, and upgrade dry-run are defined",
+    "mutating commands are dry-run capable and recoverable",
+    "Hono RPC is the default fullstack internal API contract",
+    "Better Auth baseline excludes verification/reset/OAuth until recipes are enabled",
+    "generated projects include no testing framework by default",
+    "post-deploy health verification confirms deployed URLs respond",
+    "base app setup is verified on Windows, macOS, and Linux",
+    "create-flare-stack and flare lifecycle CLI package boundaries are defined",
+    "first-party reference app validates Flare conventions",
+    "core dependencies are pinned to exact tested versions at scaffold time",
+    "env/example files are generated only when required by selected capabilities",
+    "bun setup generates safe local secrets while preserving user-supplied values",
+    "Cloudflare required secret names are declared and production secrets stay separate from local values",
+    "fullstack browser traffic uses one public web origin with /api/* forwarded through a Service Binding",
+    "Better Auth fullstack session flow is validated after deploy by Flare release harness",
+    "Wrangler/wrangler.jsonc is the stable v1 default and cf is experimental opt-in",
+    "database-backed deploys fail when required production migrations are pending",
+    "pre-commit contains only staged fast checks; typecheck runs pre-push; build happens at explicit verify/deploy time",
+    "all package build scripts are invoked as bun run build, never bare bun build",
+    "Worker Preview secrets use Wrangler Preview Base secret APIs rather than deploy --secrets-file",
+    "Neon pool cleanup occurs after request-scoped DB/auth work settles",
+    "Better Auth uses dynamic baseURL allowedHosts and no base BETTER_AUTH_URL env variable",
+    "extension preset is extension-only in v1"
+  ],
+  "distribution": {
+    "packages": {
+      "create-flare-stack": "scaffolding entrypoint for bun create flare-stack",
+      "flare": "lifecycle CLI used inside generated projects"
+    },
+    "templates": "versioned with Flare release",
+    "generated_repos_github_actions": false,
+    "internal_package": "flare-core shared generator/doctor/recipe/deploy engine",
+    "flare_dependency": "generated projects pin exact flare devDependency; no global CLI required"
+  },
+  "reference_app": {
+    "required": true,
+    "stack": [
+      "TanStack Start",
+      "D1",
+      "Drizzle",
+      "Better Auth",
+      "shadcn/ui",
+      "@shadcn/lint",
+      "evlog",
+      "Cloudflare"
+    ],
+    "purpose": "usability/proving ground for Flare conventions before generator expansion",
+    "cloudflare_config": "wrangler.jsonc"
+  },
+  "implementation_order": [
+    "reference app + app preset without DB",
+    "D1",
+    "Neon",
+    "Better Auth",
+    "fullstack with Hono RPC + same-origin Service Binding",
+    "extension + worker",
+    "recipes + registry + lifecycle"
+  ],
+  "release_verification": {
+    "generated_project_commands": [
+      "bun install",
+      "bun setup",
+      "bun check",
+      "bun ui:lint",
+      "bun run build"
+    ],
+    "external_harness_checks": [
+      "start generated fixture",
+      "verify root route or /health",
+      "verify evlog structured/redacted output where applicable",
+      "for fullstack + auth, perform one real-browser sign-in/session check after deploy using Flare-owned CI harness only",
+      "app/worker previews with mutable bindings use preview-only resources",
+      "fullstack web preview built with CLOUDFLARE_ENV=preview and flattened config targets server-preview",
+      "fullstack connected web Worker has non-production Preview Builds disabled and no narrowed watch paths",
+      "missing required secret blocks deploy with actionable remediation",
+      "preview and production required secrets are independent",
+      "local D1 migration is visible to bun dev via canonical .wrangler/state",
+      "fullstack bun dev starts one web Vite process with auxiliary server, not a duplicate server process",
+      "server RPC contract change breaks web bun check when consumer is stale",
+      "first fullstack deploy succeeds from empty account after provisioning/secrets bootstrap",
+      "rollback targets web then server and leaves database unchanged",
+      "empty-account DB first deploy provisions resources, migrates, bootstraps secrets, succeeds",
+      "bun preview migrates preview DB before deployment",
+      "non-production fullstack build guard uploads no Worker",
+      "production deploy refuses ambient CLOUDFLARE_ENV",
+      "/api/health returns only {ok:true}",
+      "Neon deployed fixture survives two consecutive requests with request-scoped client",
+      "Better Auth rate limiting persists across separate requests/isolate executions",
+      "rollback restores paired web/server release tag",
+      "Hono fullstack routes mount under /api; standalone worker health is /health",
+      "Better Auth /get-session performs no rate-limit write",
+      "app+D1 Worker Preview created after preview secret push inherits required Preview Base secrets; targeted per-Preview override affects only named Preview",
+      "first deploy of never-deployed Worker with secrets.required succeeds via --secrets-file",
+      "generated server config found by name",
+      "production deploy refuses non-production WORKERS_CI_BRANCH",
+      "security-header baseline present on document and /api/health; X-Robots-Tag only on preview",
+      "flare rollback refuses when one half of recorded pair expired",
+      "auxiliary server local dev loads apps/server/.dev.vars required secrets with pinned Vite plugin",
+      "Better Auth dynamic base URL accepts intended local/production/preview hosts and rejects unlisted Host",
+      "Neon cleanup begins only after request/auth DB work completes",
+      "named Worker Preview redeployed twice still lists every required secret (verification repairs or fails loudly)",
+      "deployed session cookie carries Secure; local http://localhost sign-in still works",
+      "spoofed X-Forwarded-Host/Host outside AUTH_ALLOWED_HOSTS rejected",
+      "every app/worker config has a previews block",
+      "bun dev with CLOUDFLARE_ENV=development gives auxiliary server Worker its local vars and .dev.vars secrets; build/deploy never inherit it",
+      "fullstack Workers Builds runs bun check before deploy; deploy command owns the single Vite production build",
+      "production AUTH_ALLOWED_HOSTS contains no localhost entry; env.development contains the exact known local port",
+      "pinned Wrangler wrangler secret bulk can bootstrap a never-deployed Worker by creating its draft Worker before normal deploy"
+    ],
+    "rule": "Flare may have internal verification dependencies, but generated application repos receive no test framework by default.",
+    "cross_platform_base_app": ["windows", "macos", "linux"],
+    "cloudflare_experimental_cf": "when Flare advertises cf compatibility, exercise at least one pinned cf fixture before release",
+    "fullstack_topology_checks": [
+      "preview web binds preview server, never production server",
+      "preview server uses preview DB/resources",
+      "private production server has workers_dev=false, preview_urls=false, no route",
+      "/api/* is Worker-first before SPA fallback",
+      "original Request forwarded through Service Binding",
+      "web preview environment selected at Vite build via CLOUDFLARE_ENV=preview",
+      "ordered production deploy runs server before web",
+      "local dev uses auxiliary Worker Service Binding topology and web-only root dev",
+      "root and /api/health succeed after deploy"
+    ],
+    "tooling": {
+      "worker_previews_requires": "Wrangler >= 4.135.0",
+      "cloudflare_vite_plugin": "exact pinned tested release"
+    },
+    "workers_builds_fullstack": "build command bun check; deploy command owns single Vite production build"
+  },
+  "environment": {
+    "principle": "generate env/example files only when selected features require them",
+    "cloudflare_server_local_file": ".dev.vars",
+    "cloudflare_server_example_file": ".dev.vars.example",
+    "client_public_example_file": ".env.example only when client-visible variables are required",
+    "do_not_mix_worker_sources": [".dev.vars", ".env in the same Worker app"],
+    "same_origin_default": {
+      "generate_api_url_env": false,
+      "app": "same origin by framework topology",
+      "fullstack": "relative /api path through web Worker Service Binding"
+    },
+    "rules": [
+      "real secret files are gitignored",
+      "every required generated key has an actionable comment",
+      "local deterministic values and safe generated secrets may be filled by bun setup",
+      "third-party credentials remain blank until supplied by the user",
+      "production secrets are never silently copied from local development",
+      "D1 uses typed bindings and does not create DATABASE_URL",
+      "Neon uses DATABASE_URL for a non-production local/development database or branch",
+      "client and server environment schemas are separate",
+      "required Cloudflare secret names are declared in Cloudflare config where supported"
+    ],
+    "better_auth_secret": {
+      "required_when_auth_enabled": true,
+      "local_generation": "bun setup generates securely",
+      "documented_manual_commands": ["openssl rand -base64 32", "npx auth@latest secret"],
+      "cross_platform_flare_command": "flare secrets generate BETTER_AUTH_SECRET --env production"
+    },
+    "setup_behavior": [
+      "create local env file from example when missing",
+      "preserve existing values",
+      "fill local URLs/ports",
+      "generate safe local random secrets",
+      "leave third-party credentials blank",
+      "print remaining manual actions"
+    ],
+    "commands": [
+      "flare env check",
+      "flare secrets list",
+      "flare secrets push",
+      "flare secrets generate <NAME> --env <environment>",
+      "flare secrets push --env preview",
+      "flare secrets generate <NAME> --env preview"
+    ],
+    "gitignore": [
+      ".dev.vars",
+      ".dev.vars.* except example",
+      ".preview.vars",
+      ".preview.vars.* except example",
+      ".env* except committed example",
+      ".wrangler/",
+      ".turbo/",
+      "dist/",
+      ".flare/"
+    ],
+    "service_topology_isolation": {
+      "production": "web -> server -> production resources",
+      "preview": "web-preview -> server-preview -> preview resources",
+      "local": "local web -> local auxiliary server -> local/simulated resources"
+    },
+    "required_secrets_config": {
+      "format": "wrangler.jsonc",
+      "example": {
+        "secrets": {
+          "required": ["BETTER_AUTH_SECRET"]
+        }
+      }
+    },
+    "better_auth_url_rule": "no BETTER_AUTH_URL in base stack; AUTH_ALLOWED_HOSTS and AUTH_PROTOCOL are non-secret Wrangler vars per environment; production excludes localhost; development uses exact localhost:<dev-port> with http",
+    "d1_config": "real wrangler.jsonc d1_databases binding; no DATABASE_URL",
+    "required_secrets_behavior": {
+      "only_actual_secrets_in_required": true,
+      "non_secret_runtime_values": "Wrangler vars",
+      "local_file": "when secrets.required exists, .dev.vars contains only listed secret keys",
+      "preview_and_production": "secret values are separate and non-inherited",
+      "first_remote_setup": "provision -> secret bulk -> migrate -> deploy"
+    },
+    "fullstack_secret_location": "apps/server/.dev.vars; not apps/web",
+    "d1_local_persist_path": "repo-root .wrangler/state shared by Vite persistState and Wrangler --persist-to",
+    "cloudflare_env_selector": {
+      "production": "unset; use top-level Wrangler config",
+      "preview": "set CLOUDFLARE_ENV=preview only on build command",
+      "never_in_generated_env_files": true
+    },
+    "non_secret_values": "Wrangler vars; not .dev.vars when secrets.required exists",
+    "migration_status_database_url": {
+      "location": "Workers Builds build secret",
+      "worker_runtime_secret": false,
+      "in_secrets_required": false,
+      "in_dev_vars": false,
+      "recommended_role": "read-only"
+    },
+    "first_remote_setup": "provision -> secret bulk to explicit Worker -> migrate -> deploy"
+  },
+  "command_policy": {
+    "package_script_rule": "Use bun run <script> when the name collides with a Bun built-in.",
+    "build": "Always use bun run build; bare bun build invokes Bun bundler.",
+    "testing": "Generated projects have no bun test script by default.",
+    "setup": {
+      "local": "bun setup",
+      "remote_cloudflare": "flare setup cloudflare",
+      "no_alias": "bun setup:cloudflare"
+    }
+  },
+  "review_hardening": {
+    "date": "2026-09-30",
+    "changes": [
+      "fixed Bun build command collision",
+      "same-origin fullstack auth via Service Binding",
+      "mandatory pending-migration preflight",
+      "Wrangler default with cf beta opt-in",
+      "fast staged pre-commit hooks",
+      "single ordered fullstack Vite build/deploy",
+      "removed redundant verify:deploy alias",
+      "clarified generated-project vs Flare-internal testing policy"
+    ],
+    "v0_8": [
+      "fullstack safe preview uses persistent Wrangler preview environment because Worker Preview service bindings target production downstream workers",
+      "private server disables workers.dev and preview/version URLs and has no public route",
+      "only web Worker is Git-connected; deploy command orchestrates server then web",
+      "web static assets run Worker first for /api/* and forward original Request",
+      "local fullstack dev uses Cloudflare Vite auxiliaryWorkers instead of generic Vite proxy",
+      "Better Auth URL fixed to browser-facing origin",
+      "D1 and required-secret examples now use real wrangler.jsonc syntax",
+      "pre-push default reduced to bun check; deploy remains full build gate",
+      "destructive migration guard and preflight credential policy documented"
+    ],
+    "v0_9": [
+      "corrected Cloudflare Vite preview env selection: CLOUDFLARE_ENV at build time",
+      "explicit preview bindings for app/worker Worker Previews",
+      "disable fullstack Git branch Preview Builds to prevent production Service Binding leakage",
+      "required secrets separated from Wrangler vars and bootstrapped before first deploy",
+      "fullstack bun dev starts web only; auxiliary Worker starts server",
+      "removed root prepare Lefthook installer; bun setup owns local hooks and CI disables hook install",
+      "dedicated type-only Hono RPC contract boundary with release fixture",
+      "canonical repo-root D1 local persistence path",
+      "Neon defaults to transaction-capable neon-serverless driver",
+      "defined fullstack rollback order and server-first backwards compatibility rule",
+      "remote side effects are not promised transactional rollback",
+      "observability enabled in Wrangler and request IDs propagate across Service Binding",
+      "preview noindex/security baseline and Better Auth rate-limit defaults specified",
+      "fixed pre-push policy to bun check",
+      "manifest owns intent while wrangler owns concrete Cloudflare state",
+      "two public packages plus internal flare-core fixed from day one",
+      "removed shape-changing recipes from v1 and added applicability matrix",
+      "unified setup naming",
+      "compatibility_date policy specified; redundant nodejs_compat flags omitted on modern dates",
+      "fullstack Workers Build uses repository root without narrowed watch paths"
+    ],
+    "v0_10": {
+      "first_deploy": "provision -> migrate -> bootstrap secrets with --secrets-file -> ordered deploy (superseded in v0.14)",
+      "preview": "auto preview migrations + no-upload branch guard",
+      "build": "single Vite build includes auxiliary server; deploy server then web",
+      "routing": "fullstack Hono basePath(/api)",
+      "security": "explicit headers + durable Better Auth rate limiting",
+      "rollback": "paired release tags",
+      "source_of_truth": "Markdown normative, JSON synchronized/generated"
+    },
+    "v0_11": {
+      "preview_secrets": "superseded in v0.12: Worker Preview presets use Preview Base secret APIs; fullstack env.preview keeps normal deploy secret path",
+      "production_guard": "WORKERS_CI_BRANCH must equal productionBranch; CLOUDFLARE_ENV unset",
+      "rate_limit": "explicit, database, cf-connecting-ip, /get-session exempt",
+      "headers": "X-Frame-Options DENY enforcing; _headers static only; Hono secureHeaders for /api",
+      "floors": "Wrangler 4.74.0 (secrets-file), 4.135.0 (Worker Previews) (superseded in v0.14)",
+      "rollback": "refuse on expired version",
+      "neon": "serverless kept; Hyperdrive switch path documented",
+      "docs": "section numbering fixed; gitignore completed"
+    },
+    "v0_12": {
+      "worker_preview_secrets": "Preview Base secret APIs for app/worker; no --secrets-file on wrangler preview",
+      "neon_lifecycle": "request-scoped pool with cleanup after handler settles",
+      "auth_origin": "Better Auth dynamic baseURL allowlist; removed BETTER_AUTH_URL from base contract",
+      "headers": "explicit exact API header middleware; no base HSTS; no bare secureHeaders()",
+      "extension": "extension-only preset; backend is separate project",
+      "source_of_truth": "Markdown normative; JSON generation/sync is a release gate",
+      "fixtures": "auxiliary .dev.vars loading and dynamic-host rejection added"
+    },
+    "v0_13": {
+      "auth": "explicit AUTH_PROTOCOL (cookie Secure no longer depends on NODE_ENV); explicit localhost ports; forwarded headers untrusted; spoof test",
+      "oauth": "social login unsupported on per-branch Worker Previews",
+      "preview_secrets": "post-deploy verification + repair for Worker Previews; previews block required; fullstack uses explicit --name for secret bulk",
+      "bootstrap": "explicit owners; .flare/bootstrap-secrets.json consumed by bun deploy; interrupted setup resumes (superseded in v0.14)",
+      "docs": "JSON better_auth_url_rule synchronized"
+    },
+    "v0_14": {
+      "secret_bootstrap": "production and persistent fullstack preview use wrangler secret bulk; pinned Wrangler may create draft Worker; no resumable plaintext bootstrap file",
+      "auth_allowlist": "production AUTH_ALLOWED_HOSTS excludes localhost; local hosts live only in env.development",
+      "workers_builds": "fullstack build command is bun check; deploy command owns the single production Vite build",
+      "localhost_policy": "Better Auth supports localhost:* but Flare intentionally emits exact known dev ports"
+    }
+  },
+  "verified_against": [
+    "Cloudflare Wrangler configuration",
+    "Worker Previews",
+    "Service Bindings",
+    "Cloudflare Vite auxiliary Workers",
+    "Workers Builds",
+    "Better Auth rate-limit docs",
+    "Neon serverless driver + Hyperdrive guidance",
+    "Workers Builds branch-control/configuration docs",
+    "Wrangler secrets-file docs"
+  ],
+  "recipes": {
+    "v1": ["db:d1", "db:neon", "auth", "mcp", "r2", "email", "public-api"],
+    "shape_changing_recipes": "not in v1; choose project shape at create time",
+    "applicability": {
+      "db:d1": ["app", "fullstack", "worker"],
+      "db:neon": ["app", "fullstack", "worker"],
+      "auth": ["app", "fullstack"],
+      "mcp": ["app", "fullstack", "worker"],
+      "r2": ["app", "fullstack", "worker"],
+      "email": ["app", "fullstack", "worker"],
+      "public-api": ["fullstack", "worker"]
+    }
+  },
+  "known_v1_limits": [
+    "one persistent fullstack preview pair; concurrent branches can overwrite it",
+    "auxiliaryWorkers pinned/release-tested with local proxy fallback",
+    "no shape-conversion recipes",
+    "remote resources/secrets not transactionally auto-reverted",
+    "Cloudflare Access preview protection recommended but opt-in",
+    "Neon preview/production URLs are manually supplied; no branch automation",
+    "Neon serverless driver is the v1 default although vendors recommend Hyperdrive on Workers; Hyperdrive is the documented switch path",
+    "CSP is Report-Only with no reporting endpoint in v1",
+    "Worker version retention is limited; old release pairs may not be rollback-able",
+    "social login (single-callback OAuth) unsupported on per-branch Worker Previews"
+  ],
+  "normative_source": "flare-stack-spec-v0.14.md",
+  "generation_policy": "spec.json is generated/synchronized from the normative Markdown during Flare release; manual drift is a release failure"
+}

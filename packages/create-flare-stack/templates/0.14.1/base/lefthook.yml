@@ -1,0 +1,10 @@
+pre-commit:
+  parallel: false
+  commands:
+    quality:
+      run: bun run lint:staged
+
+pre-push:
+  commands:
+    check:
+      run: bun check

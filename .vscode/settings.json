@@ -1,0 +1,9 @@
+{
+  "biome.enabled": false,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports.biome": "never"
+  },
+  "editor.formatOnSave": true,
+  "oxc.lint.enable": true,
+  "oxc.fmt.enable": true
+}

@@ -1,0 +1,21 @@
+{
+  "name": "flare",
+  "version": "0.14.1",
+  "bin": {
+    "flare": "./bin/flare.ts"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run ./scripts/verify-lifecycle.ts"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

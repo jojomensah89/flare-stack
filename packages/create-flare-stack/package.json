@@ -1,0 +1,27 @@
+{
+  "name": "create-flare-stack",
+  "version": "0.14.1",
+  "description": "Scaffold tested Flare Stack projects",
+  "bin": {
+    "create-flare-stack": "./bin/create-flare-stack.ts"
+  },
+  "files": [
+    "bin/**",
+    "src/**",
+    "templates/**"
+  ],
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "verify:planner": "bun run scripts/verify-planner.ts",
+    "verify:fixtures": "bun run scripts/verify-fixtures.ts",
+    "verify:packed": "bun run scripts/verify-packed.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

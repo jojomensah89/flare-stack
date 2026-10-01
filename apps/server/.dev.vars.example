@@ -1,0 +1,6 @@
+# Better Auth encryption/signing secret for fullstack server. Must be at least 32 high-entropy characters.
+# `bun setup` generates a local value automatically.
+BETTER_AUTH_SECRET=
+
+# Neon/Postgres connection string for DEVELOPMENT database/branch (when Neon is selected)
+DATABASE_URL=

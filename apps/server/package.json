@@ -1,0 +1,30 @@
+{
+  "name": "@repo/server",
+  "version": "0.14.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/db": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "better-auth": "1.7.6",
+    "evlog": "2.29.0",
+    "hono": "4.13.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "wrangler": "4.144.0"
+  }
+}

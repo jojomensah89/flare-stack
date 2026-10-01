@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalPassThroughEnv": [
+    "FLARE_GITHUB_OWNER",
+    "FLARE_GITHUB_REPO",
+    "FLARE_RELEASE_TAG",
+    "FLARE_ARCHIVE_URL",
+    "CREATE_FLARE_STACK_ARCHIVE_URL"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".output/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

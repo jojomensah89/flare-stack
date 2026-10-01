@@ -1,0 +1,66 @@
+# Flare Stack implementation status
+
+Verified locally on Windows with Bun 1.4.2, through 2026-10-01. The v0.14.1 documents remain the full design; this implementation delivers the approved first app path, not the entire roadmap.
+
+## Completed first path
+
+| Area                 | Implemented behavior                                                                                                                                                                                                                    | Evidence                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical app        | TanStack Start app with D1 and optional Better Auth; active app has no disconnected Hono Service Binding                                                                                                                                | Reference build and local browser runtime                                                                                       |
+| Generator            | app/none, app/D1, app/D1/auth; strict names and destinations; unsupported choices reject early; installed validation uses the final destination                                                                                         | All three real install/setup/check/build fixtures passed                                                                        |
+| Packed archive shape | Versioned templates, Bun entrypoint, ignored-secret configuration, Preview secret example                                                                                                                                               | Packed archive unpacked outside workspace; all three static profiles passed                                                     |
+| GitHub distribution  | Release archives (`create-flare-stack-0.14.1.tgz` and `flare-0.14.1.tgz`); manifests pin release archive URL; `bunx --bun --package` and loopback HTTP distribution verified                                                            | `bun release:prepare` and `bun test:distribution` (loopback HTTP server, bunx execution, and full install/check/build) passed   |
+| Quality              | Pinned Oxfmt/Oxlint, type-aware lint, shadcn plugin, TypeScript 7                                                                                                                                                                       | Root `bun check` passed; each generated profile also passed its strict quality gate                                             |
+| Authentication       | Explicit secret, host and protocol; forwarded host ignored; worker-scoped Preview allowlist; durable database rate limit; session reads exempt                                                                                          | Disposable SQLite signup/signin/signout/session/cookie/rate-limit fixture passed                                                |
+| Response policy      | Five baseline security headers, request IDs, Preview noindex; actual evlog integration and secret redaction                                                                                                                             | HTML/API policy fixtures and reference build                                                                                    |
+| Lifecycle            | Validated config; isolated local/remote Preview/production D1 targets; fail-closed migration preflight; built-artifact deployment; real Wrangler JSON shape; secret handling and first-Worker bootstrap; modular operation architecture | Fake-runner regression fixtures plus real local Wrangler deploy dry run                                                         |
+| UI primitives        | Existing Base UI Dialog/Menu replaces custom keyboard and focus management; separated variant definitions                                                                                                                               | Typecheck/lint; browser keyboard open, focus containment, Escape/focus return, menu navigation/activation; React Doctor 100/100 |
+| Code quality         | Zero React Doctor issues across web and UI; hydration-safe deterministic dates; decomposed reference demo                                                                                                                               | React Doctor 100/100 on @repo/web and @repo/ui; clean oxlint and typecheck                                                      |
+| Preserved prototypes | Hono typed client and Neon request-scoped pool helper                                                                                                                                                                                   | Focused local fixtures; no deployed preset support claimed                                                                      |
+
+Verification scripts use disposable fixtures. No remote provisioning, secret push, production migration, deployment, publication, or existing database reset was performed.
+
+## Next release work
+
+1. Exercise the three profiles against a clean Cloudflare account. Verify resource IDs, secret bootstrap and retention, remote Preview migrations, headers, noindex, auth sessions in a real browser, health checks, and a second Preview deployment.
+2. Run the same package/quality/generation matrix on macOS and Linux. Windows proof does not establish cross-platform execution.
+3. Publish prepared release archives to GitHub Releases under the real repository owner (`OWNER` placeholder replacement) and verify downloaded scaffolding from public GitHub URLs.
+4. Resolve actual account Worker hostnames automatically during Cloudflare setup. Current setup requires explicit exact production hosts and a Worker-scoped Preview pattern; it does not guess the account namespace.
+
+## Deferred specification work
+
+| Work                                     | Current boundary                                                                                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fullstack                                | Preserved Hono reference; generator/lifecycle rejects unsupported topology. Real Service Binding routing, paired releases and coordinated rollback remain. |
+| Neon                                     | Pool helper checked locally; generator and remote lifecycle reject this profile until migration status, cleanup and deployed fixtures exist.               |
+| Worker and extension presets             | Not generated by the initial release.                                                                                                                      |
+| Recipes, registry and capabilities       | Not implemented as a public composition/release surface.                                                                                                   |
+| Upgrades and resource/deployment history | Explicitly unsupported rather than reporting fabricated success.                                                                                           |
+| D1 reset and seed                        | Reset is deferred pending safe state preservation/recovery; no project seed data is defined. These commands return an explanatory failure.                 |
+
+## Keep, simplify and improve
+
+Keep the app-first architecture, Bun workspaces, shared UI, D1/Drizzle, optional Better Auth, Workers-compatible APIs and structured observability. Generated no-database and no-auth projects omit those optional runtime dependencies.
+
+Biome/ESLint and unsafe database-mutating verification were replaced. The active preset no longer claims an unused fullstack architecture, auth has no fixed secret fallback, and dialog/menu behavior comes from the existing primitive library. Preserve the Hono/Neon prototypes as deferred reference material.
+
+The lifecycle command implementation has been modularized by operation into dedicated command handlers under `packages/flare/src/commands/` (`deploy`, `preview`, `setup`, `db`, `secrets`, `env`, `doctor`, `health`, `rollback`, `hosts`, `common`) while preserving validated project and runner interfaces. React Doctor now scores 100/100 ("Great, No issues found!") across both `@repo/web` and `@repo/ui`: the reference demo has been decomposed into focused subcomponents, `auth-card` complexity has been factored into distinct views, locale-sensitive formatting during render has been replaced with hydration-safe deterministic output, and button variants have been extracted to dedicated variant modules. Avoid adding more presets before the live app release path is proven.
+
+## Reproduce local evidence
+
+```powershell
+bun check
+bun run build
+bun run test:auth
+bun run test:runtime
+bun run test:fullstack
+bun run test:neon
+bun run release:prepare
+bun run test:distribution
+bun run --cwd packages/flare verify
+bun run --cwd packages/create-flare-stack verify:planner
+bun run --cwd packages/create-flare-stack verify:packed
+bun run --cwd packages/create-flare-stack verify:fixtures --flare-package C:/absolute/path/to/flare-0.14.1.tgz
+```
+
+Builds emit upstream Zod/Rollup annotation warnings but exit successfully. The packed-generator fixture checks archive resolution and static composition; the separate full-profile fixtures perform real installation, setup, lint, typecheck and build.

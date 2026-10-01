@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
+  "jsPlugins": ["@shadcn/lint"],
+  "ignorePatterns": [
+    "**/routeTree.gen.ts",
+    "**/worker-configuration.d.ts",
+    "**/dist/**",
+    "**/.wrangler/**",
+    "**/.turbo/**",
+    "**/node_modules/**"
+  ],
+  "settings": {
+    "shadcn": {
+      "ui": "@repo/ui/components"
+    },
+    "react": {
+      "version": "19.2.8"
+    }
+  },
+  "rules": {
+    // This reference app intentionally loads its sample data on mount; React Compiler migration is outside this gate.
+    "react/set-state-in-effect": "off",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error"
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/**/*.{js,jsx,ts,tsx}", "packages/ui/**/*.{js,jsx,ts,tsx}"],
+      "rules": {
+        "shadcn/no-raw-colors": "error",
+        "shadcn/no-arbitrary-values": "error",
+        "shadcn/no-inline-styles": "error",
+        "shadcn/no-unknown-classes": "error",
+        "shadcn/require-static-classes": "error",
+        "shadcn/no-restyle": ["error", { "allow": ["layout"] }]
+      }
+    },
+    {
+      "files": ["packages/ui/src/components/**/*.{js,jsx,ts,tsx}"],
+      "rules": {
+        "shadcn/no-restyle": "off"
+      }
+    }
+  ]
+}

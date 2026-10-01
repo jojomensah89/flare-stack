@@ -1,0 +1,4 @@
+# Better Auth signing/encryption secret for local Preview testing only.
+# Keep this distinct from both the local-development and production secrets.
+# Cloudflare setup stores the deployed Preview secret separately as a Worker secret.
+BETTER_AUTH_SECRET=

@@ -115,7 +115,20 @@ assert.deepEqual(fullstackNeonAuth.templateLayers, [
   "fullstack/auth-better-auth-neon",
 ]);
 
-rejects(() => projectOptions(["--preset", "worker"]), /not available.*app, fullstack/i);
+const worker = createProjectPlan(projectOptions(["--preset", "worker"]));
+assert.deepEqual(worker.templateLayers, ["base", "worker/common"]);
+
+const workerD1 = createProjectPlan(projectOptions(["--preset", "worker", "--db", "d1"]));
+assert.deepEqual(workerD1.templateLayers, ["base", "worker/common", "db/d1", "worker/db-d1"]);
+
+const workerNeon = createProjectPlan(projectOptions(["--preset", "worker", "--db", "neon"]));
+assert.deepEqual(workerNeon.templateLayers, ["base", "worker/common", "db/neon", "worker/db-neon"]);
+
+rejects(
+  () => projectOptions(["--preset", "worker", "--auth"]),
+  /does not support Better Auth session cookies/i,
+);
+rejects(() => projectOptions(["--preset", "unknown"]), /not available.*app, fullstack, worker/i);
 rejects(() => projectOptions(["--auth"]), /requires a database/i);
 rejects(() => projectOptions(["--db", "postgres"]), /Choose none, d1, or neon/i);
 rejects(() => projectOptions(["--auth=false"]), /Choose none or better-auth/i);
@@ -146,7 +159,7 @@ try {
       resolve(import.meta.dir, "../bin/create-flare-stack.ts"),
       unsupportedDestination,
       "--preset",
-      "worker",
+      "unknown",
     ],
     { cwd: fixtureRoot, stdout: "pipe", stderr: "pipe" },
   );
@@ -156,7 +169,7 @@ try {
     new Response(cli.stderr).text(),
   ]);
   assert.equal(exitCode, 2, `${stdout}\n${stderr}`);
-  assert.match(stderr, /not available.*app, fullstack/i);
+  assert.match(stderr, /not available.*app, fullstack, worker/i);
   assert.equal(existsSync(unsupportedDestination), false);
 
   const packageDirectory = join(fixtureRoot, "flare-package");

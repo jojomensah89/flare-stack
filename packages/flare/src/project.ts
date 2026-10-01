@@ -42,7 +42,10 @@ export async function loadProject(startDirectory: string): Promise<ProjectContex
     `${pathToFileURL(configFile).href}?flare_reload=${randomUUID()}`
   );
   const config = validateFlareConfig(configModule.default);
-  const wranglerPath = join(root, "apps", "web", "wrangler.jsonc");
+  const wranglerPath =
+    config.preset === "worker"
+      ? join(root, "apps", "server", "wrangler.jsonc")
+      : join(root, "apps", "web", "wrangler.jsonc");
   if (!existsSync(wranglerPath)) {
     throw new Error(`Missing Wrangler config: ${wranglerPath}`);
   }
@@ -55,17 +58,25 @@ export async function loadProject(startDirectory: string): Promise<ProjectContex
 }
 
 export function requireApp(project: ProjectContext, command: string): void {
-  if (project.config.preset !== "app") {
+  if (
+    project.config.preset !== "app" &&
+    project.config.preset !== "fullstack" &&
+    project.config.preset !== "worker"
+  ) {
     throw new Error(
-      `${command} currently supports the app preset only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
+      `${command} currently supports app, fullstack, and worker presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
     );
   }
 }
 
 export function requireSupportedAppDatabase(project: ProjectContext, command: string): void {
-  if (project.config.preset !== "app" && project.config.preset !== "fullstack") {
+  if (
+    project.config.preset !== "app" &&
+    project.config.preset !== "fullstack" &&
+    project.config.preset !== "worker"
+  ) {
     throw new Error(
-      `${command} currently supports the app and fullstack presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
+      `${command} currently supports app, fullstack, and worker presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
     );
   }
 }

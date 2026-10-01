@@ -17,10 +17,13 @@ The canonical reference is the TanStack Start `app` preset with D1 and Better Au
 | fullstack | D1       | Better Auth    |
 | fullstack | Neon     | none           |
 | fullstack | Neon     | Better Auth    |
+| worker    | none     | none           |
+| worker    | D1       | none           |
+| worker    | Neon     | none           |
 
-Neon profiles use `@neondatabase/serverless` with Drizzle ORM and Postgres-native migrations. `DATABASE_URL` is validated at setup and used at runtime via a request-scoped pool helper. Fullstack profiles deploy paired backend server and frontend web Workers communicating via Cloudflare Service Bindings and typed Hono RPC, with coordinated preview and rollback.
+Neon profiles use `@neondatabase/serverless` with Drizzle ORM and Postgres-native migrations. `DATABASE_URL` is validated at setup and used at runtime via a request-scoped pool helper. Fullstack profiles deploy paired backend server and frontend web Workers communicating via Cloudflare Service Bindings and typed Hono RPC, with coordinated preview and rollback. Standalone Worker profiles (`--preset worker`) scaffold a standalone `apps/server` Cloudflare Worker with Hono, evlog structured logging, optional D1 or Neon persistence with Drizzle, and full Flare lifecycle commands (`deploy`, `preview`, `rollback`, `db:*`).
 
-Worker, extension, recipes, registry, and upgrades remain roadmap work.
+Browser extension, recipes, registry, and upgrades remain roadmap work.
 
 ## Reference development
 

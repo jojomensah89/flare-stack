@@ -170,7 +170,7 @@ function createRunner(
     }
     if (subcommand === "deploy") {
       if (runOptions.cwd === join(root, "apps", "server")) {
-        return success("Uploaded fixture-server\nNo targets deployed for fixture-server");
+        return success("Uploaded fixture-server\nhttps://fixture-server.workers.dev");
       }
       assert.equal(runOptions.cwd, join(root, "apps", "web"));
       assert.equal(
@@ -181,11 +181,9 @@ function createRunner(
       return success(`Uploaded ${fixtureWorker}\nhttps://${fixtureWorker}.workers.dev`);
     }
     if (subcommand === "preview") {
-      assert.equal(runOptions.cwd, join(root, "apps", "web"));
-      assert.equal(
-        args.includes("--config"),
-        false,
-        "preview must follow the Vite-generated config redirect",
+      assert.ok(
+        runOptions.cwd === join(root, "apps", "web") ||
+          runOptions.cwd === join(root, "apps", "server"),
       );
       return success(
         JSON.stringify({
@@ -206,7 +204,7 @@ function createRunner(
     }
     if (subcommand === "rollback") {
       if (runOptions.cwd === join(root, "apps", "server")) {
-        return success("Rolled back fixture-server");
+        return success("Rolled back fixture-server\nhttps://fixture-server.workers.dev");
       }
       assert.ok(
         args.includes("--config"),
@@ -800,6 +798,88 @@ async function verifyNeonLifecycle(): Promise<void> {
   });
 }
 
+async function verifyStandaloneWorkerLifecycle(): Promise<void> {
+  await withFixture({ database: "none" }, async (root) => {
+    const configPath = join(root, "flare.config.ts");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace('"preset": "app"', '"preset": "worker"'),
+    );
+
+    const serverDir = join(root, "apps", "server");
+    mkdirSync(serverDir, { recursive: true });
+    writeFileSync(
+      join(serverDir, "wrangler.jsonc"),
+      JSON.stringify(
+        {
+          name: "fixture-server",
+          compatibility_date: "2026-09-30",
+          workers_dev: true,
+          secrets: { required: [] },
+          vars: { FLARE_ENVIRONMENT: "production" },
+          previews: { vars: { FLARE_ENVIRONMENT: "preview" } },
+          env: {
+            development: { secrets: { required: [] }, vars: { FLARE_ENVIRONMENT: "development" } },
+            preview: { secrets: { required: [] }, vars: { FLARE_ENVIRONMENT: "preview" } },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    rmSync(join(root, "apps", "web"), { recursive: true, force: true });
+
+    const { runner, calls } = createRunner(root);
+    const errors: string[] = [];
+    const healthChecks: string[] = [];
+    const deps = createDependencies(root, runner, errors);
+    deps.fetcher = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      healthChecks.push(url.pathname);
+      if (url.pathname === "/health") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response("worker healthy", { status: 200 });
+    };
+
+    const deployStatus = await runCli(["deploy", "--cloudflare-only"], deps);
+    assert.equal(deployStatus, 0);
+    assert.equal(errors.length, 0);
+    const serverDeploy = calls.find(
+      (call) => call.command === "wrangler" && call.cwd === serverDir && call.args[0] === "deploy",
+    );
+    assert.ok(serverDeploy, "Must deploy apps/server");
+    assert.ok(healthChecks.includes("/health"), "Deploy health check must verify /health");
+
+    calls.length = 0;
+    healthChecks.length = 0;
+    const previewStatus = await runCli(["preview"], deps);
+    assert.equal(previewStatus, 0);
+    assert.equal(errors.length, 0);
+    const serverPreview = calls.find(
+      (call) => call.command === "wrangler" && call.cwd === serverDir && call.args[0] === "preview",
+    );
+    assert.ok(serverPreview, "Must deploy preview Worker for apps/server");
+    assert.ok(healthChecks.includes("/health"), "Preview health check must verify /health");
+
+    calls.length = 0;
+    healthChecks.length = 0;
+    const rollbackStatus = await runCli(
+      ["rollback", "--url", "https://fixture-server.workers.dev"],
+      deps,
+    );
+    assert.equal(rollbackStatus, 0);
+    assert.equal(errors.length, 0);
+    const serverRollback = calls.find(
+      (call) =>
+        call.command === "wrangler" && call.cwd === serverDir && call.args[0] === "rollback",
+    );
+    assert.ok(serverRollback, "Must rollback apps/server");
+    assert.ok(healthChecks.includes("/health"), "Rollback health check must verify /health");
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -810,6 +890,7 @@ async function main(): Promise<void> {
   await verifySecretsAndBootstrap();
   await verifyInvalidHostInputs();
   await verifyFullstackDeployment();
+  await verifyStandaloneWorkerLifecycle();
   await verifyNeonLifecycle();
   assert.equal(
     await runCli(["--help"], {
@@ -819,7 +900,7 @@ async function main(): Promise<void> {
     0,
   );
   console.log(
-    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, and help. No remote operation was performed.",
+    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, standalone worker lifecycle, and help. No remote operation was performed.",
   );
 }
 

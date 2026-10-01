@@ -113,10 +113,11 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
   if (
     parsed.preset &&
     parsed.preset.toLowerCase() !== "app" &&
-    parsed.preset.toLowerCase() !== "fullstack"
+    parsed.preset.toLowerCase() !== "fullstack" &&
+    parsed.preset.toLowerCase() !== "worker"
   ) {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker.`,
     );
   }
   if (parsed.database) {
@@ -134,6 +135,11 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
   ) {
     throw new UserInputError(
       `Auth option \`${parsed.auth}\` is not supported. Choose none or better-auth.`,
+    );
+  }
+  if (parsed.preset?.toLowerCase() === "worker" && parsed.auth?.toLowerCase() === "better-auth") {
+    throw new UserInputError(
+      "Worker preset does not support Better Auth session cookies; choose fullstack or app for web authentication.",
     );
   }
   if (parsed.database?.toLowerCase() === "none" && parsed.auth?.toLowerCase() === "better-auth") {
@@ -226,9 +232,9 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   }
 
   const preset = (parsed.preset ?? "app").toLowerCase() as Preset;
-  if (preset !== "app" && preset !== "fullstack") {
+  if (preset !== "app" && preset !== "fullstack" && preset !== "worker") {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker.`,
     );
   }
 
@@ -243,6 +249,11 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   if (auth !== "none" && auth !== "better-auth") {
     throw new UserInputError(
       `Auth option \`${parsed.auth}\` is not supported. Choose none or better-auth.`,
+    );
+  }
+  if (preset === "worker" && auth === "better-auth") {
+    throw new UserInputError(
+      "Worker preset does not support Better Auth session cookies; choose fullstack or app for web authentication.",
     );
   }
   if (auth === "better-auth" && db === "none") {

@@ -256,6 +256,11 @@ export async function validateMaterializedProject(
 
   if (plan.options.preset === "app") {
     await assertPathAbsent(root, "apps/server", "dedicated Hono server");
+  } else if (plan.options.preset === "worker") {
+    await assertPathAbsent(root, "apps/web", "web application");
+    await assertPathPresent(root, "apps/server", "dedicated Hono server");
+    await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
+    await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
   } else {
     await assertPathPresent(root, "apps/server", "dedicated Hono server");
     await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
@@ -282,7 +287,11 @@ export async function validateMaterializedProject(
       "Neon Drizzle configuration",
     );
   }
-  const wranglerText = await readFile(join(root, "apps", "web", "wrangler.jsonc"), "utf8");
+  const primaryWranglerPath =
+    plan.options.preset === "worker"
+      ? join(root, "apps", "server", "wrangler.jsonc")
+      : join(root, "apps", "web", "wrangler.jsonc");
+  const wranglerText = await readFile(primaryWranglerPath, "utf8");
 
   if (plan.options.database === "none") {
     await assertPathAbsent(root, "packages/db", "database package");
@@ -311,8 +320,6 @@ export async function validateMaterializedProject(
     }
   } else if (plan.options.database === "d1") {
     const dbPackage = join(root, "packages", "db", "package.json");
-    const wranglerPath = join(root, "apps", "web", "wrangler.jsonc");
-    const wranglerText = await readFile(wranglerPath, "utf8").catch(() => "");
     if (!(await exists(dbPackage)) || !wranglerText.includes("d1_databases")) {
       throw new GenerationError(
         "generated project validation",
@@ -333,8 +340,6 @@ export async function validateMaterializedProject(
     }
   } else if (plan.options.database === "neon") {
     const dbPackage = join(root, "packages", "db", "package.json");
-    const wranglerPath = join(root, "apps", "web", "wrangler.jsonc");
-    const wranglerText = await readFile(wranglerPath, "utf8").catch(() => "");
     if (!(await exists(dbPackage)) || wranglerText.includes("d1_databases")) {
       throw new GenerationError(
         "generated project validation",
@@ -346,7 +351,7 @@ export async function validateMaterializedProject(
       throw new GenerationError(
         "generated project validation",
         "The Neon overlay must declare DATABASE_URL in secrets.required.",
-        "Declare DATABASE_URL in apps/web/wrangler.jsonc secrets.required.",
+        `Declare DATABASE_URL in ${plan.options.preset === "worker" ? "apps/server" : "apps/web"}/wrangler.jsonc secrets.required.`,
       );
     }
     await assertPathAbsent(root, "packages/db/src/schema", "D1 SQLite schema in Neon profile");
@@ -385,23 +390,23 @@ export async function validateMaterializedProject(
         "Better Auth Preview secret example",
       );
     } else {
-      await assertPathPresent(
-        root,
-        "apps/web/.preview.vars.example",
-        "Neon Preview database secret example",
-      );
-      const previewExample = await readFile(join(root, "apps/web/.preview.vars.example"), "utf8");
+      const previewExamplePath =
+        plan.options.preset === "worker"
+          ? "apps/server/.preview.vars.example"
+          : "apps/web/.preview.vars.example";
+      await assertPathPresent(root, previewExamplePath, "Neon Preview database secret example");
+      const previewExample = await readFile(join(root, previewExamplePath), "utf8");
       if (!/^DATABASE_URL\s*=/m.test(previewExample)) {
         throw new GenerationError(
           "generated project validation",
-          "apps/web/.preview.vars.example is missing the required DATABASE_URL entry.",
+          `${previewExamplePath} is missing the required DATABASE_URL entry.`,
           "Declare DATABASE_URL in .preview.vars.example.",
         );
       }
       if (/^BETTER_AUTH_SECRET\s*=/m.test(previewExample)) {
         throw new GenerationError(
           "generated project validation",
-          "apps/web/.preview.vars.example should not contain BETTER_AUTH_SECRET when auth is none.",
+          `${previewExamplePath} should not contain BETTER_AUTH_SECRET when auth is none.`,
           "Remove BETTER_AUTH_SECRET when auth is none.",
         );
       }
@@ -597,6 +602,10 @@ export async function materializeProject(
   if (plan.options.database === "neon") {
     await rm(join(target, "packages", "db", "src", "schema"), { recursive: true, force: true });
     await rm(join(target, "packages", "db", "migrations"), { recursive: true, force: true });
+  }
+
+  if (plan.options.preset === "worker") {
+    await rm(join(target, "apps", "web"), { recursive: true, force: true });
   }
 
   await renderFiles(target, values);

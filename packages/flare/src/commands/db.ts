@@ -21,7 +21,7 @@ import {
   parseJsonOutput,
   printCommandOutput,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
   type D1DatabaseRecord,
@@ -112,7 +112,7 @@ export function readMigrationState(
     deps,
     "wrangler",
     migrationArgs(project, env, false),
-    webDirectory(project),
+    workerDirectory(project),
   );
   return parseMigrationState(result, `D1 ${env} migration status`);
 }
@@ -177,7 +177,7 @@ export async function applyD1Migrations(
     deps,
     "wrangler",
     migrationArgs(project, environment, true),
-    webDirectory(project),
+    workerDirectory(project),
   );
   printCommandOutput(getOutput(deps), result);
   assertCommandSucceeded(result, `Apply D1 ${environment} migrations`);
@@ -188,7 +188,7 @@ export function fetchD1Records(project: ProjectContext, deps: CliDependencies): 
     deps,
     "wrangler",
     withConfig(project, ["d1", "list", "--json"]),
-    webDirectory(project),
+    workerDirectory(project),
   );
   if (result.status !== 0) throw commandError(result, "wrangler d1 list");
   return parseD1List(result.stdout);
@@ -206,7 +206,7 @@ export function ensureRemoteD1(
     deps,
     "wrangler",
     withConfig(project, ["d1", "create", binding.databaseName]),
-    webDirectory(project),
+    workerDirectory(project),
     { env: { ...getEnv(deps), CI: "1" } },
   );
   if (created.status !== 0) {

@@ -6,7 +6,7 @@ import {
   getOption,
   parseJsonOutput,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
 } from "./common";
@@ -294,7 +294,7 @@ export function callWhoAmI(project: ProjectContext, deps: CliDependencies): void
     deps,
     "wrangler",
     withConfig(project, ["whoami", "--json"]),
-    webDirectory(project),
+    workerDirectory(project),
   );
   if (result.status !== 0) {
     throw new Error("Cloudflare authentication failed. Run `bun x wrangler login` and retry.");

@@ -1,0 +1,61 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "{{PROJECT_NAME}}",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "FLARE_ENVIRONMENT": "production",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "{{PROJECT_NAME}}-production",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../../packages/db/migrations",
+    },
+  ],
+  "previews": {
+    "vars": {
+      "FLARE_ENVIRONMENT": "preview",
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "{{PROJECT_NAME}}-preview",
+        "database_id": "00000000-0000-0000-0000-000000000002",
+        "migrations_dir": "../../packages/db/migrations",
+      },
+    ],
+  },
+  "env": {
+    "development": {
+      "vars": {
+        "FLARE_ENVIRONMENT": "development",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "{{PROJECT_NAME}}-development",
+          "database_id": "00000000-0000-0000-0000-000000000003",
+          "migrations_dir": "../../packages/db/migrations",
+        },
+      ],
+    },
+    "preview": {
+      "name": "{{PROJECT_NAME}}-preview",
+      "vars": {
+        "FLARE_ENVIRONMENT": "preview",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "{{PROJECT_NAME}}-preview",
+          "database_id": "00000000-0000-0000-0000-000000000002",
+          "migrations_dir": "../../packages/db/migrations",
+        },
+      ],
+    },
+  },
+}

@@ -25,6 +25,37 @@ export async function commandRollback(
   ensureProductionEnvironment(project, deps);
   const output = getOutput(deps);
 
+  if (project.config.preset === "worker") {
+    output.log("Rolling back Worker (apps/server)...");
+    const result = runTool(
+      deps,
+      "wrangler",
+      withConfig(project, ["rollback"]),
+      serverDirectory(project),
+      { env: clearCloudflareEnvironment(deps) },
+    );
+    printCommandOutput(output, result);
+    assertCommandSucceeded(result, "Worker rollback");
+
+    const url = getOption(args, "--url") ?? deployedUrls(`${result.stdout}\n${result.stderr}`)[0];
+    if (!url) {
+      output.error(
+        "Rollback command succeeded, but the public Worker URL was not returned; health remains unverified. Run `flare health <url>`.",
+      );
+      return 2;
+    }
+    try {
+      await verifyAppHealth(url, deps.fetcher ?? fetch, 5, 1500, "/health");
+      output.log(`Rollback health checks passed for ${url}: root and /health.`);
+    } catch (error) {
+      output.error(
+        `Rollback succeeded, but post-rollback health verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 2;
+    }
+    return 0;
+  }
+
   if (project.config.preset === "fullstack") {
     output.log("Rolling back backend server Worker (apps/server)...");
     const serverResult = runTool(deps, "wrangler", ["rollback"], serverDirectory(project), {

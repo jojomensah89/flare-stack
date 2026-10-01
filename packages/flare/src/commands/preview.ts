@@ -10,6 +10,7 @@ import {
   serverDirectory,
   webDirectory,
   withBuiltDeploymentConfig,
+  withConfig,
   type CliDependencies,
 } from "./common";
 import {
@@ -92,13 +93,15 @@ export async function commandPreview(
   for (const [name, value] of Object.entries(runtimeVars(project, "worker-preview"))) {
     previewFlags.push("--var", `${name}:${value}`);
   }
-  const result = runTool(
-    deps,
-    "wrangler",
-    withBuiltDeploymentConfig(project, previewFlags),
-    webDirectory(project),
-    { env: clearCloudflareEnvironment(deps) },
-  );
+  const previewDir =
+    project.config.preset === "worker" ? serverDirectory(project) : webDirectory(project);
+  const previewArgs =
+    project.config.preset === "worker"
+      ? withConfig(project, previewFlags)
+      : withBuiltDeploymentConfig(project, previewFlags);
+  const result = runTool(deps, "wrangler", previewArgs, previewDir, {
+    env: clearCloudflareEnvironment(deps),
+  });
   if (result.stdout.trim()) output.log(result.stdout.trimEnd());
   if (result.stderr.trim()) output.error(result.stderr.trimEnd());
   assertCommandSucceeded(result, "Wrangler Worker Preview deploy");

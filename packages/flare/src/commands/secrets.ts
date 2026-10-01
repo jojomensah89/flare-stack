@@ -13,7 +13,7 @@ import {
   parseJsonOutput,
   printCommandOutput,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
   type Output,
@@ -94,7 +94,7 @@ export function runSecretBulk(
           workerName,
           ...(previewName ? ["--name", previewName] : []),
         ]);
-  return runTool(deps, "wrangler", args, webDirectory(project), {
+  return runTool(deps, "wrangler", args, workerDirectory(project), {
     input: serializeSecretValues(values),
   });
 }
@@ -118,7 +118,7 @@ export function remoteSecretNames(
           "--worker-name",
           workerName,
         ]);
-  const result = runTool(deps, "wrangler", args, webDirectory(project));
+  const result = runTool(deps, "wrangler", args, workerDirectory(project));
   if (result.status !== 0) {
     // Wrangler converts API 10007 to this specific UserError, omitting the code.
     // Only first setup may bootstrap a missing Worker; all other errors fail closed.
@@ -155,7 +155,7 @@ export function previewSecretNames(
       getWorkerName(project),
       "--json",
     ]),
-    webDirectory(project),
+    workerDirectory(project),
   );
   if (result.status !== 0) {
     throw commandError(result, `List secrets on Worker Preview ${previewName}`);
@@ -190,7 +190,7 @@ export function runPreviewSecretBulk(
         "--worker-name",
         getWorkerName(project),
       ]),
-      webDirectory(project),
+      workerDirectory(project),
     );
   } finally {
     try {

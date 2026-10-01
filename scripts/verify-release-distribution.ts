@@ -122,6 +122,7 @@ try {
     { name: "test-d1", preset: "app", database: "d1", auth: "none" },
     { name: "test-auth", preset: "app", database: "d1", auth: "better-auth" },
     { name: "test-fullstack", preset: "fullstack", database: "d1", auth: "better-auth" },
+    { name: "test-worker", preset: "worker", database: "d1", auth: "none" },
   ] as const;
 
   for (const profile of profiles) {
@@ -160,6 +161,16 @@ try {
       assert.ok(
         existsSync(join(projectDir, "apps/server/src/index.ts")),
         "apps/server/src/index.ts must exist in fullstack",
+      );
+    }
+    if (profile.preset === "worker") {
+      assert.ok(
+        existsSync(join(projectDir, "apps/server/src/index.ts")),
+        "apps/server/src/index.ts must exist in worker preset",
+      );
+      assert.ok(
+        !existsSync(join(projectDir, "apps/web")),
+        "apps/web must not exist in worker preset",
       );
     }
     if (profile.database === "d1") {

@@ -4,7 +4,7 @@ import {
   getOutput,
   printCommandOutput,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
 } from "./commands/common";
@@ -77,7 +77,7 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
         deps,
         "wrangler",
         withConfig(project, ["tail", ...args]),
-        webDirectory(project),
+        workerDirectory(project),
       );
       printCommandOutput(output, result);
       return result.status ?? 1;

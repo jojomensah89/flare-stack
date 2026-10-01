@@ -70,6 +70,9 @@ try {
       database: "neon",
       auth: "better-auth",
     },
+    { name: "packed-worker", preset: "worker", database: "none", auth: "none" },
+    { name: "packed-worker-d1", preset: "worker", database: "d1", auth: "none" },
+    { name: "packed-worker-neon", preset: "worker", database: "neon", auth: "none" },
   ]) {
     const destination = join(root, profile.name);
     const options = argsModule.makeProjectOptions(
@@ -94,8 +97,12 @@ try {
     const ignore = readFileSync(join(destination, ".gitignore"), "utf8");
     assert.ok(ignore.includes(".dev.vars") && ignore.includes(".preview.vars"));
     assert.ok(existsSync(join(destination, ".oxlintrc.json")));
+    const previewExamplePath =
+      profile.preset === "worker"
+        ? "apps/server/.preview.vars.example"
+        : "apps/web/.preview.vars.example";
     assert.equal(
-      existsSync(join(destination, "apps/web/.preview.vars.example")),
+      existsSync(join(destination, previewExamplePath)),
       profile.auth === "better-auth" || profile.database === "neon",
     );
   }

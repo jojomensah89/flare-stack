@@ -127,6 +127,10 @@ export function serverDirectory(project: ProjectContext): string {
   return join(project.root, "apps", "server");
 }
 
+export function workerDirectory(project: ProjectContext): string {
+  return project.config.preset === "worker" ? serverDirectory(project) : webDirectory(project);
+}
+
 export function runTool(
   deps: CliDependencies,
   command: ManagedCommand,

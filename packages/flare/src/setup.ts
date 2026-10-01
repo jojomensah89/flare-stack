@@ -29,7 +29,9 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
   }
 
   output.log("Preparing the local app workspace...");
-  const webDirectory = join(root, "apps", "web");
+  const targetDirectory =
+    project.config.preset === "worker" ? join(root, "apps", "server") : join(root, "apps", "web");
+  const targetLabel = project.config.preset === "worker" ? "apps/server" : "apps/web";
   if (project.config.database === "d1") {
     getAppD1Bindings(project);
     const stateDirectory = join(root, ".wrangler", "state");
@@ -39,14 +41,14 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
     output.log("No local database state directory is needed.");
   } else {
     output.log(
-      "Neon local setup only prepares declared secret names; supply a non-production DATABASE_URL in apps/web/.dev.vars.",
+      `Neon local setup only prepares declared secret names; supply a non-production DATABASE_URL in ${targetLabel}/.dev.vars.`,
     );
   }
 
   const requiredSecrets = getRequiredSecrets(project);
   const localSecrets = initializeLocalSecrets(
-    join(webDirectory, ".dev.vars.example"),
-    join(webDirectory, ".dev.vars"),
+    join(targetDirectory, ".dev.vars.example"),
+    join(targetDirectory, ".dev.vars"),
     requiredSecrets,
   );
   if (localSecrets.generated.length > 0) {
@@ -54,12 +56,12 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
   }
   if (localSecrets.extra.length > 0) {
     output.warn(
-      `Preserved undeclared local secret name(s) in apps/web/.dev.vars: ${localSecrets.extra.join(", ")}. Their values were not read back or changed.`,
+      `Preserved undeclared local secret name(s) in ${targetLabel}/.dev.vars: ${localSecrets.extra.join(", ")}. Their values were not read back or changed.`,
     );
   }
   if (localSecrets.missing.length > 0) {
     throw new Error(
-      `Local setup needs values for ${localSecrets.missing.join(", ")} in apps/web/.dev.vars. Fill those values, then run bun setup again.`,
+      `Local setup needs values for ${localSecrets.missing.join(", ")} in ${targetLabel}/.dev.vars. Fill those values, then run bun setup again.`,
     );
   }
   if (requiredSecrets.length > 0) {
@@ -88,7 +90,7 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
     "wrangler",
     ["types", "--include-runtime=false", "--config", project.wranglerPath],
     {
-      cwd: webDirectory,
+      cwd: targetDirectory,
     },
   );
   if (types.stdout.trim()) output.log(types.stdout.trimEnd());

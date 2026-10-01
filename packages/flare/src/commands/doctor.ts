@@ -7,7 +7,7 @@ import {
   getOutput,
   hasOption,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
 } from "./common";
@@ -114,7 +114,7 @@ export async function commandDoctor(
     deps,
     "wrangler",
     withConfig(project, ["types", "--check", "--include-runtime=false"]),
-    webDirectory(project),
+    workerDirectory(project),
     { env: clearCloudflareEnvironment(deps) },
   );
   check(

@@ -2,7 +2,7 @@ import type { ReleaseMetadata } from "./release";
 
 export const FLARE_VERSION = "0.14.1";
 
-export type Preset = "app" | "fullstack";
+export type Preset = "app" | "fullstack" | "worker";
 export type Database = "none" | "d1" | "neon";
 export type Auth = "none" | "better-auth";
 

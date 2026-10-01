@@ -1,0 +1,22 @@
+{
+  "name": "@repo/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@repo/observability": "workspace:*",
+    "evlog": "1.0.8",
+    "hono": "4.13.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "@repo/config": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "wrangler": "4.144.0"
+  }
+}

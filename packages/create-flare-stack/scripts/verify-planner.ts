@@ -6,6 +6,12 @@ import { gzipSync } from "node:zlib";
 import { makeProjectOptions, parseArguments } from "../src/args";
 import { FLARE_VERSION, UserInputError } from "../src/model";
 import { createProjectPlan } from "../src/plan";
+import { resolveBunExecutable } from "../src/workflow";
+
+assert.equal(resolveBunExecutable("/path/to/bun"), "/path/to/bun");
+assert.equal(resolveBunExecutable("C:\\bin\\bun.exe"), "C:\\bin\\bun.exe");
+const testBunx = process.execPath.replace(/bun(\.exe)?$/i, (_m, ext) => `bunx${ext ?? ""}`);
+assert.equal(resolveBunExecutable(testBunx), process.execPath);
 
 let counter = 0;
 function projectOptions(args: string[]) {

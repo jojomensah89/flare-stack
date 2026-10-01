@@ -1,8 +1,23 @@
+import { existsSync } from "node:fs";
 import { lstat, mkdtemp, rename, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { materializeProject, validateMaterializedProject } from "./materialize";
 import { GenerationError, type ProjectPlan } from "./model";
 import { resolveTemplateRoot } from "./plan";
+
+export function resolveBunExecutable(execPath: string = process.execPath): string {
+  if (/bunx(\.exe)?$/i.test(execPath)) {
+    const candidate = execPath.replace(/bunx(\.exe)?$/i, (_m, ext) => `bun${ext ?? ""}`);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const whichBun = Bun.which("bun");
+    if (whichBun) {
+      return whichBun;
+    }
+  }
+  return execPath;
+}
 
 export type CommandRunner = (
   executable: string,
@@ -77,19 +92,20 @@ export async function createProject(
     committedToDestination = true;
 
     if (!dependencies.skipValidationCommands) {
+      const bun = resolveBunExecutable();
       console.log("Installing project dependencies with Bun...");
-      await run(process.execPath, ["install"], destination, "dependency installation");
+      await run(bun, ["install"], destination, "dependency installation");
 
       console.log("Initializing Git and project-local setup...");
       await run("git", ["init", "--initial-branch=main"], destination, "Git initialization");
-      await run(process.execPath, ["run", "setup"], destination, "project setup");
+      await run(bun, ["run", "setup"], destination, "project setup");
 
       console.log("Formatting the rendered project with its pinned Oxfmt...");
-      await run(process.execPath, ["run", "format"], destination, "rendered-source formatting");
+      await run(bun, ["run", "format"], destination, "rendered-source formatting");
 
       console.log("Running bun check and production build...");
-      await run(process.execPath, ["check"], destination, "quality checks");
-      await run(process.execPath, ["run", "build"], destination, "production build");
+      await run(bun, ["check"], destination, "quality checks");
+      await run(bun, ["run", "build"], destination, "production build");
     }
 
     await validateMaterializedProject(plan, destination);

@@ -16,7 +16,10 @@
     "generate:d1": "drizzle-kit generate --config drizzle.config.ts",
     "generate:neon": "drizzle-kit generate --config drizzle.neon.config.ts",
     "migrate:neon": "bun run ./src/neon/migrate.ts",
-    "status:neon": "bun run ./src/neon/status.ts"
+    "status:neon": "bun run ./src/neon/status.ts",
+    "studio": "bun run ./src/studio.ts",
+    "studio:d1": "drizzle-kit studio --config drizzle.config.ts",
+    "studio:neon": "drizzle-kit studio --config drizzle.neon.config.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.1.0",
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",
+    "@libsql/client": "0.18.0",
     "@types/node": "24.13.3",
     "drizzle-kit": "0.31.11",
     "typescript": "7.0.2"

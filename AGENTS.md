@@ -14,6 +14,7 @@ When a package script name collides with a Bun built-in, use `bun run <script>`.
 - `bun run build` - production build
 - `bun preview` - safe remote preview
 - `bun deploy` - deploy Cloudflare workloads
+- `bun db:studio` - visual Drizzle Studio database browser
 
 ## Architecture
 

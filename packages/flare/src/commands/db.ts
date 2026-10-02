@@ -653,7 +653,17 @@ export async function commandDb(
   subargs: string[],
 ): Promise<number> {
   const output = getOutput(deps);
-  expectOnlyFlags(subargs, ["--env", "--allow-destructive", "--provider", "--yes", "--seed"]);
+  expectOnlyFlags(subargs, [
+    "--env",
+    "--allow-destructive",
+    "--provider",
+    "--yes",
+    "--seed",
+    "--port",
+    "--host",
+    "--help",
+    "-h",
+  ]);
   const provider = getOption(subargs, "--provider") ?? project.config.database;
   if (provider !== project.config.database) {
     throw new Error(
@@ -661,6 +671,15 @@ export async function commandDb(
     );
   }
   requireSupportedAppDatabase(project, `flare db ${subcommand ?? ""}`);
+
+  if (subcommand === "studio") {
+    const studioScript = join(project.root, "packages", "db", "src", "studio.ts");
+    const result = runTool(deps, "bun", ["run", studioScript, ...subargs], project.root);
+    printCommandOutput(output, result);
+    assertCommandSucceeded(result, "flare db studio");
+    return 0;
+  }
+
   const environment = getOption(subargs, "--env") ?? "local";
   if (environment !== "local" && environment !== "preview" && environment !== "production") {
     throw new Error(
@@ -695,7 +714,7 @@ export async function commandDb(
       throw new Error("Neon seed data is not defined by this project. No database was changed.");
     }
     throw new Error(
-      "Usage: flare db <migrate|status|seed|reset> [--env local|preview|production].",
+      "Usage: flare db <migrate|status|seed|reset|studio> [--env local|preview|production].",
     );
   }
 
@@ -805,5 +824,7 @@ export async function commandDb(
     }
     return 0;
   }
-  throw new Error("Usage: flare db <migrate|status|seed|reset> [--env local|preview|production].");
+  throw new Error(
+    "Usage: flare db <migrate|status|seed|reset|studio> [--env local|preview|production].",
+  );
 }

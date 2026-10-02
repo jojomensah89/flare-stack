@@ -14,7 +14,8 @@
     "generate": "drizzle-kit generate --config drizzle.neon.config.ts",
     "generate:neon": "drizzle-kit generate --config drizzle.neon.config.ts",
     "migrate:neon": "bun run ./src/neon/migrate.ts",
-    "status:neon": "bun run ./src/neon/status.ts"
+    "status:neon": "bun run ./src/neon/status.ts",
+    "studio": "drizzle-kit studio --config drizzle.neon.config.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.1.0",

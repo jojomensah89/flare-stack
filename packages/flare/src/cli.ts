@@ -32,7 +32,7 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
 
   if (!command || command === "--help" || command === "-h" || command === "help") {
     output.log(
-      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset>, logs, rollback, health <url>, upgrade, add <recipe>, recipes [list]\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
+      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset|studio>, logs, rollback, health <url>, upgrade, add <recipe>, recipes [list]\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
     );
     return 0;
   }

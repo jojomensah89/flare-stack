@@ -250,23 +250,25 @@ export function getAppD1Bindings(project: ProjectContext): {
 }
 
 export function getRequiredSecrets(project: ProjectContext): string[] {
+  const targetLabel =
+    project.config.preset === "worker" ? "apps/server/wrangler.jsonc" : "apps/web/wrangler.jsonc";
   const readNames = (environment: string, node: JsoncNode): string[] => {
     const secretsNode = getProperty(node, "secrets");
     const requiredNode = getProperty(secretsNode ?? node, "required");
     if (!requiredNode || requiredNode.type !== "array") {
       throw new Error(
-        `apps/web/wrangler.jsonc must declare secrets.required in ${environment}, including an empty array when none are required.`,
+        `${targetLabel} must declare secrets.required in ${environment}, including an empty array when none are required.`,
       );
     }
     const names = (getArray(requiredNode) ?? []).map((item) => item.value);
     if (!names.every((name) => typeof name === "string" && /^[A-Z][A-Z0-9_]*$/.test(name))) {
       throw new Error(
-        `apps/web/wrangler.jsonc secrets.required in ${environment} must contain only uppercase secret names.`,
+        `${targetLabel} secrets.required in ${environment} must contain only uppercase secret names.`,
       );
     }
     if (new Set(names).size !== names.length) {
       throw new Error(
-        `apps/web/wrangler.jsonc secrets.required in ${environment} must not contain duplicate secret names.`,
+        `${targetLabel} secrets.required in ${environment} must not contain duplicate secret names.`,
       );
     }
     return names as string[];
@@ -276,7 +278,7 @@ export function getRequiredSecrets(project: ProjectContext): string[] {
   const environment = getProperty(project.wranglerNode, "env");
   for (const name of ["development", "preview"]) {
     const environmentNode = getProperty(environment ?? project.wranglerNode, name);
-    if (!environmentNode) throw new Error(`apps/web/wrangler.jsonc must declare env.${name}.`);
+    if (!environmentNode) throw new Error(`${targetLabel} must declare env.${name}.`);
     const names = readNames(`env.${name}`, environmentNode);
     if (
       names.length !== production.length ||

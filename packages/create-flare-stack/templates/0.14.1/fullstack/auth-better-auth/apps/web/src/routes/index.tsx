@@ -140,8 +140,12 @@ function IndexPage() {
           items={sbItems}
           loading={sbLoading}
           status={sbStatus}
-          onFetchClientRpc={fetchClientRpc}
-          onFetchServerFn={fetchServerFn}
+          onFetchClientRpc={() => {
+            void fetchClientRpc();
+          }}
+          onFetchServerFn={() => {
+            void fetchServerFn();
+          }}
         />
 
         <AuthCard />
@@ -157,41 +161,48 @@ function IndexPage() {
               Persisted in Cloudflare D1 via Drizzle ORM through TanStack server functions.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <form className="flex gap-2" onSubmit={handleSubmit}>
-              <div className="flex-1 space-y-1">
-                <Label className="sr-only" htmlFor="d1-item-name">
-                  Item name
-                </Label>
-                <Input
-                  id="d1-item-name"
-                  placeholder="Enter a new item name..."
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <Button disabled={busy || !name.trim()} type="submit">
-                {busy ? "Saving..." : "Add item"}
-              </Button>
-            </form>
+          <CardContent>
+            <div className="space-y-4">
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  void handleSubmit(e);
+                }}
+              >
+                <div className="flex-1 space-y-1">
+                  <Label className="sr-only" htmlFor="d1-item-name">
+                    Item name
+                  </Label>
+                  <Input
+                    id="d1-item-name"
+                    placeholder="Enter a new item name..."
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <Button disabled={busy || !name.trim()} type="submit">
+                  {busy ? "Saving..." : "Add item"}
+                </Button>
+              </form>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
-            {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No items in the database yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>{item.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{item.id}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+              {items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No items in the database yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {items.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                    >
+                      <span>{item.name}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{item.id}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </CardContent>
         </Card>
       </section>

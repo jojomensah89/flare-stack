@@ -263,6 +263,11 @@ export async function commandAddRecipe(
   printCommandOutput(output, setupResult);
   assertCommandSucceeded(setupResult, "bun setup");
 
+  const formatResult = runTool(deps, "bun", ["run", "format"], project.root);
+  if (formatResult.status !== 0) {
+    output.warn("Automatic formatting after recipe application was skipped.");
+  }
+
   output.log(`Successfully applied recipe "${recipeName}"!`);
   output.log(`Capability enabled: "${capability}"`);
   output.log("Next steps:");

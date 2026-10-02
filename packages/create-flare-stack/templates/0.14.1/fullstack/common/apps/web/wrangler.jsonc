@@ -4,6 +4,9 @@
   "compatibility_date": "2026-09-30",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
+  "secrets": {
+    "required": [],
+  },
   "vars": {
     "FLARE_ENVIRONMENT": "production",
   },
@@ -31,11 +34,17 @@
   },
   "env": {
     "development": {
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "development",
       },
     },
     "preview": {
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
       },

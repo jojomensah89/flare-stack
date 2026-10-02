@@ -169,6 +169,9 @@ function createRunner(
       ) {
         return success("Setup complete.");
       }
+      if (args[0] === "run" && args[1] === "format") {
+        return success("Formatted.");
+      }
       throw new Error(`Unexpected fake Bun command: ${args.join(" ")}`);
     }
 

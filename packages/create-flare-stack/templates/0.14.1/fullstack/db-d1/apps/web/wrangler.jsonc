@@ -12,6 +12,9 @@
       "migrations_dir": "../../packages/db/migrations",
     },
   ],
+  "secrets": {
+    "required": [],
+  },
   "vars": {
     "FLARE_ENVIRONMENT": "production",
   },
@@ -47,6 +50,9 @@
   },
   "env": {
     "development": {
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "development",
       },
@@ -60,6 +66,9 @@
       ],
     },
     "preview": {
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
       },

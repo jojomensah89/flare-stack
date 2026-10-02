@@ -5,6 +5,9 @@
   "compatibility_date": "2026-09-30",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "secrets": {
+    "required": [],
+  },
   "vars": {
     "FLARE_ENVIRONMENT": "production",
   },
@@ -31,6 +34,9 @@
   },
   "env": {
     "development": {
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "development",
       },
@@ -45,6 +51,9 @@
     },
     "preview": {
       "name": "{{PROJECT_NAME}}-preview",
+      "secrets": {
+        "required": [],
+      },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
       },

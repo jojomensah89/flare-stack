@@ -106,8 +106,12 @@ function IndexPage() {
           items={sbItems}
           loading={sbLoading}
           status={sbStatus}
-          onFetchClientRpc={fetchClientRpc}
-          onFetchServerFn={fetchServerFn}
+          onFetchClientRpc={() => {
+            void fetchClientRpc();
+          }}
+          onFetchServerFn={() => {
+            void fetchServerFn();
+          }}
         />
       </section>
     </main>

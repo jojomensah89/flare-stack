@@ -25,7 +25,9 @@
     "db:migrate": "flare db migrate --env local",
     "db:migrate:preview": "flare db migrate --env preview",
     "db:migrate:prod": "flare db migrate --env production",
-    "db:status": "flare db status --env local"
+    "db:status": "flare db status --env local",
+    "db:seed": "flare db seed --env local",
+    "db:reset": "flare db reset --env local"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",

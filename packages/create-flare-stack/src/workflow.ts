@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { materializeProject, validateMaterializedProject } from "./materialize";
 import { GenerationError, type ProjectPlan } from "./model";
 import { resolveTemplateRoot } from "./plan";
+import { installSkills, type SkillFetcher } from "./skills";
 
 export function resolveBunExecutable(execPath: string = process.execPath): string {
   if (/bunx(\.exe)?$/i.test(execPath)) {
@@ -62,6 +63,7 @@ export interface CreateProjectDependencies {
   templateRoot?: string;
   commandRunner?: CommandRunner;
   skipValidationCommands?: boolean;
+  skillFetcher?: SkillFetcher;
 }
 
 export async function createProject(
@@ -90,6 +92,11 @@ export async function createProject(
     await ensureDestinationIsStillAvailable(destination);
     await rename(stage, destination);
     committedToDestination = true;
+
+    if (plan.options.skills && plan.options.skills.length > 0) {
+      console.log(`Downloading and installing agent skills (${plan.options.skills.join(", ")})...`);
+      await installSkills(destination, plan.options.skills, dependencies.skillFetcher);
+    }
 
     if (!dependencies.skipValidationCommands) {
       const bun = resolveBunExecutable();

@@ -17,6 +17,8 @@ Supported in this release:
   --db none|d1|neon
   --auth                 Enable Better Auth (requires --db d1 or --db neon)
   --auth=none|better-auth
+  --skills recommended|none|all|<comma-separated>
+                         Agent skills to install (default: recommended)
   --flare-package <path-or-url>
                          Use a local Flare package archive/directory or archive URL
 
@@ -25,7 +27,7 @@ The worker preset does not support Better Auth.
 `;
 
 async function collectInteractiveChoices<
-  T extends { preset?: string; database?: string; auth?: string },
+  T extends { preset?: string; database?: string; auth?: string; skills?: string },
 >(choices: T): Promise<T> {
   if (!stdin.isTTY || !stdout.isTTY) return choices;
   const ask = createInterface({ input: stdin, output: stdout });
@@ -43,6 +45,24 @@ async function collectInteractiveChoices<
     if (!choices.auth) {
       const answer = (await ask.question("Enable Better Auth? (y/N): ")).trim().toLowerCase();
       choices.auth = answer === "y" || answer === "yes" ? "better-auth" : "none";
+    }
+    if (choices.skills === undefined) {
+      console.log("\nAgent skills:");
+      console.log(
+        "  [1] Recommended (logging review, log analysis, Emil design eng, better-ui, animation audits)",
+      );
+      console.log("  [2] None (core Cloudflare/Flare Stack framework skills only)");
+      console.log("  [3] Custom / All");
+      const answer = (await ask.question("Select agent skills to install [1]: "))
+        .trim()
+        .toLowerCase();
+      if (answer === "2" || answer === "none" || answer === "n") {
+        choices.skills = "none";
+      } else if (answer === "3" || answer === "all") {
+        choices.skills = "all";
+      } else {
+        choices.skills = "recommended";
+      }
     }
     return choices;
   } finally {
@@ -65,7 +85,7 @@ export async function runCli(args: string[]): Promise<number> {
 
     console.log(`\nCreated and validated ${options.projectName}.`);
     console.log(
-      `Preset: ${options.preset} | Database: ${options.database} | Auth: ${options.auth}`,
+      `Preset: ${options.preset} | Database: ${options.database} | Auth: ${options.auth}${options.skills && options.skills.length > 0 ? ` | Skills: ${options.skills.join(", ")}` : ""}`,
     );
     console.log("\nNext steps:");
     console.log(`  cd ${options.projectName}`);

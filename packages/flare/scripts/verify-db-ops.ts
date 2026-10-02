@@ -6,6 +6,7 @@ import {
   commandDb,
   getCanonicalLocalD1StatePath,
   resetLocalD1State,
+  seedLocalD1State,
   type LocalD1PathKind,
   type LocalD1StateFileSystem,
 } from "../src/commands/db";
@@ -70,6 +71,20 @@ class FakeFileSystem implements LocalD1StateFileSystem {
       ([path]) => path === fromKey || path.startsWith(`${fromKey}${sep}`),
     );
     for (const [path] of children) this.nodes.delete(path);
+    for (const [path, kind] of children) {
+      const suffix = path.slice(fromKey.length);
+      this.nodes.set(`${toKey}${suffix}`, kind);
+    }
+  }
+
+  copyTree(from: string, to: string): void {
+    if (this.kind(from) === "missing") throw new Error(`ENOENT: ${from}`);
+    if (this.kind(to) !== "missing") throw new Error(`EEXIST: ${to}`);
+    const fromKey = this.key(from);
+    const toKey = this.key(to);
+    const children = [...this.nodes.entries()].filter(
+      ([path]) => path === fromKey || path.startsWith(`${fromKey}${sep}`),
+    );
     for (const [path, kind] of children) {
       const suffix = path.slice(fromKey.length);
       this.nodes.set(`${toKey}${suffix}`, kind);
@@ -250,6 +265,75 @@ async function verifyRecoveryWithoutPreviousState(): Promise<void> {
   );
 }
 
+async function verifySeedSuccess(): Promise<void> {
+  const root = resolve("/fixture/seed-success");
+  const wrangler = join(root, ".wrangler");
+  const state = join(wrangler, "state");
+  const fs = new FakeFileSystem(root);
+  fs.add(wrangler, "directory");
+  fs.add(state, "directory");
+  fs.add(join(state, "existing.sqlite"), "file");
+  let seeded = false;
+  const result = await seedLocalD1State(
+    fakeProject(root) as never,
+    async () => {
+      seeded = true;
+      assert.equal(fs.kind(state), "directory");
+      assert.equal(fs.kind(join(state, "existing.sqlite")), "file");
+      assert.equal(fs.kind(join(wrangler, "state.flare-seed-backup-test-id")), "directory");
+    },
+    fs,
+    () => "test-id",
+  );
+  assert.equal(seeded, true);
+  assert.equal(result.statePath, state);
+  assert.equal(result.retainedBackup, undefined);
+  assert.equal(fs.kind(state), "directory");
+  assert.equal(fs.kind(join(state, "existing.sqlite")), "file");
+  assert.equal(
+    fs.paths().some((path) => path.includes("flare-seed-backup")),
+    false,
+  );
+}
+
+async function verifySeedRecovery(): Promise<void> {
+  const root = resolve("/fixture/seed-recovery");
+  const wrangler = join(root, ".wrangler");
+  const state = join(wrangler, "state");
+  const originalFile = join(state, "original.sqlite");
+  const fs = new FakeFileSystem(root);
+  fs.add(wrangler, "directory");
+  fs.add(state, "directory");
+  fs.add(originalFile, "file");
+
+  await assert.rejects(
+    seedLocalD1State(
+      fakeProject(root) as never,
+      async () => {
+        fs.add(join(state, "corrupt-partial.sqlite"), "file");
+        throw new Error("seed execution syntax error");
+      },
+      fs,
+      (() => {
+        let index = 0;
+        return () => `seed-recovery-${++index}`;
+      })(),
+    ),
+    /seed failed: Error: seed execution syntax error.*Previous local state was restored/,
+  );
+  assert.equal(fs.kind(state), "directory");
+  assert.equal(
+    fs.kind(originalFile),
+    "file",
+    "original local state must be restored after failed seed",
+  );
+  assert.equal(fs.kind(join(state, "corrupt-partial.sqlite")), "missing");
+  assert.equal(
+    fs.paths().some((path) => path.includes("flare-seed-backup")),
+    false,
+  );
+}
+
 interface TempProject {
   root: string;
   cleanup(): void;
@@ -387,6 +471,43 @@ async function verifyCommandResetAndRefusal(): Promise<void> {
     assert.ok(calls.every((call) => !call.args.includes("--remote")));
     assert.equal(calls.at(-1)?.args[2], "apply");
 
+    // Test --yes flag skips confirmation
+    const yesCalls: Call[] = [];
+    let yesPrompted = false;
+    const yesResult = await commandDb(
+      project,
+      dependencies(
+        fixture.root,
+        makeRunner(yesCalls),
+        async () => {
+          yesPrompted = true;
+          return false;
+        },
+        errors,
+      ),
+      "reset",
+      ["--env", "local", "--yes"],
+    );
+    assert.equal(yesResult, 0);
+    assert.equal(yesPrompted, false, "--yes must skip confirmation prompt");
+
+    // Test --seed flag with reset
+    const seedFile = join(fixture.root, "packages", "db", "seed.local.sql");
+    writeFileSync(seedFile, "-- reset seed\n", "utf8");
+    const seedResetCalls: Call[] = [];
+    const seedResetResult = await commandDb(
+      project,
+      dependencies(fixture.root, makeRunner(seedResetCalls), async () => true, errors),
+      "reset",
+      ["--env", "local", "--yes", "--seed"],
+    );
+    assert.equal(seedResetResult, 0);
+    assert.equal(seedResetCalls.length, 3);
+    const executeCall = seedResetCalls[2];
+    assert.ok(executeCall);
+    assert.equal(executeCall.args[1], "execute");
+    assert.equal(executeCall.args[2], "DB");
+
     const refusal = createTempProject();
     try {
       const refusalProject = await loadProject(refusal.root);
@@ -466,6 +587,27 @@ async function verifyProjectOwnedSeed(): Promise<void> {
     assert.equal(call.args.includes("--remote"), false);
     assert.equal(readFileSync(seedFile, "utf8"), "-- fixture-owned seed statements\n");
 
+    // Test seed failure recovery
+    const state = join(fixture.root, ".wrangler", "state");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(state, "before-failed-seed.sqlite"), "safe before seed", "utf8");
+    const failingRunner: CommandRunner = () => {
+      // corrupt state then fail
+      writeFileSync(join(state, "corrupt.sqlite"), "bad", "utf8");
+      return { status: 1, stdout: "", stderr: "syntax error in seed SQL" };
+    };
+    await assert.rejects(
+      commandDb(
+        project,
+        dependencies(fixture.root, failingRunner, async () => true, errors),
+        "seed",
+        ["--env", "local"],
+      ),
+      /D1 local seed failed.*syntax error.*Previous local state was restored/,
+    );
+    assert.equal(existsSync(join(state, "before-failed-seed.sqlite")), true);
+    assert.equal(existsSync(join(state, "corrupt.sqlite")), false);
+
     rmSync(seedFile);
     const absentCalls: Call[] = [];
     await assert.rejects(
@@ -500,6 +642,8 @@ async function main(): Promise<void> {
   await verifyFilesystemResetSuccess();
   await verifyFilesystemResetRecovery();
   await verifyRecoveryWithoutPreviousState();
+  await verifySeedSuccess();
+  await verifySeedRecovery();
   await verifyCommandResetAndRefusal();
   await verifyProjectOwnedSeed();
   console.log(

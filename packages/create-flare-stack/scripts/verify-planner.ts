@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -220,4 +220,46 @@ try {
   rmSync(resolvedFixtureRoot, { recursive: true, force: true });
 }
 
-console.log("Planner validation passed for app, fullstack, D1, and optional-auth combinations.");
+// Verify skills parsing and defaults
+const defaultSkillsOptions = projectOptions([]);
+assert.ok(defaultSkillsOptions.skills);
+assert.ok(defaultSkillsOptions.skills.includes("review-logging-patterns"));
+assert.ok(defaultSkillsOptions.skills.includes("emil-design-eng"));
+
+const noneSkillsOptions = projectOptions(["--skills", "none"]);
+assert.deepEqual(noneSkillsOptions.skills, []);
+
+const customSkillsOptions = projectOptions(["--skills", "better-ui,improve-animations"]);
+assert.deepEqual(customSkillsOptions.skills, ["better-ui", "improve-animations"]);
+
+rejects(() => projectOptions(["--skills", "invalid-skill-name"]), /Unknown skill/i);
+
+// Verify installSkills downloads and updates AGENTS.md
+const { installSkills } = await import("../src/skills");
+const skillTestDir = mkdtempSync(join(tmpdir(), "flare-skill-test-"));
+try {
+  const initialAgentsMd = `# Test Project\n\n## Skills Guide\n\n| Task / Domain                      | Skill to Use                   | Purpose                                                                        |\n| ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------ |\n| **Logging conventions**            | \`evlog\`                        | Server-side structured logging and wide-event standards                        |\n`;
+  writeFileSync(join(skillTestDir, "AGENTS.md"), initialAgentsMd, "utf8");
+
+  const mockFetcher = async (url: string) =>
+    `Title: Live Content\n\nDescription: Fetched live\n\nSource: ${url}\n\n---\n\n---\nname: better-ui\ndescription: UI polish\n---\n# Better UI`;
+
+  const installed = await installSkills(skillTestDir, ["better-ui"], mockFetcher);
+  assert.deepEqual(installed, ["better-ui"]);
+  assert.ok(existsSync(join(skillTestDir, ".agents", "skills", "better-ui", "SKILL.md")));
+
+  const skillFileContent = readFileSync(
+    join(skillTestDir, ".agents", "skills", "better-ui", "SKILL.md"),
+    "utf8",
+  );
+  assert.ok(skillFileContent.startsWith("---\nname: better-ui"));
+
+  const updatedAgentsMd = readFileSync(join(skillTestDir, "AGENTS.md"), "utf8");
+  assert.ok(updatedAgentsMd.includes("`better-ui`"));
+} finally {
+  rmSync(skillTestDir, { recursive: true, force: true });
+}
+
+console.log(
+  "Planner validation passed for app, fullstack, D1, optional-auth, and skills combinations.",
+);

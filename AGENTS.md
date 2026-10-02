@@ -54,6 +54,25 @@ This project uses Better Auth configured with Cloudflare D1 via Drizzle ORM.
 
 Before finishing a code change, run `bun check`; run any project-specific tests only if that project has chosen to add them.
 
-## Skills
+## Skills Guide
 
-Task-specific procedures live under `.agents/skills`. Load the matching skill when modifying Cloudflare resources, UI, or TanStack Start code.
+Task-specific procedures live under `.agents/skills`. Project-level craft, animation, UI selection, and log-analysis skills are packaged with `create-flare-stack` and installed when starting a new project. Agents must load the matching skill before starting work in a given domain:
+
+| Task / Domain                      | Skill to Use                   | Purpose                                                                        |
+| ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| **Logging review & patterns**      | `review-logging-patterns`      | Auditing code for logging best practices, wide events, and evlog adoption      |
+| **Log analysis & debugging**       | `analyze-logs`                 | Analyzing NDJSON log events in `.evlog/logs/` to diagnose errors and latencies |
+| **Logging conventions**            | `evlog`                        | Server-side structured logging and wide-event standards                        |
+| **Design engineering & craft**     | `emil-design-eng`              | UI polish, component craftsmanship, animation philosophy, and micro-details    |
+| **Visual polish & accessibility**  | `better-ui`                    | Concentric borders, surface depth, hit areas, optical alignment, and contrast  |
+| **Selecting UI libraries**         | `pick-ui-library`              | Curated recommendations for charts, command menus, toasts, virtualization      |
+| **Finding animation spots**        | `find-animation-opportunities` | Identifying static UI areas that would benefit from subtle motion              |
+| **Refining motion & physics**      | `improve-animations`           | Auditing and tuning animation timing, springs, and transitions                 |
+| **Component primitives**           | `shadcn`                       | Monorepo component structure and shadcn conventions                            |
+| **UI token enforcement**           | `shadcn-lint`                  | Token consistency and preventing ad-hoc style suppressions                     |
+| **Typed backend & error handling** | `effect`                       | Functional business logic, typed errors, and Hono integration via `runEffect`  |
+| **Routing & server functions**     | `tanstack-start`               | TanStack Start route trees, loaders, and server functions                      |
+| **Edge runtime & bindings**        | `cloudflare-workers`           | Cloudflare Workers execution model, bindings, and compatibility flags          |
+| **Database operations**            | `d1` / `neon`                  | Schema migrations, connection pooling, and Drizzle ORM queries                 |
+| **Authentication & sessions**      | `better-auth`                  | Auth configuration, dynamic baseURL, D1 rate limiting, and client helpers      |
+| **Workspace architecture**         | `flare-project` / `flare-web`  | Flare Stack monorepo conventions and web surface workflows                     |

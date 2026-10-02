@@ -10,6 +10,7 @@ import {
   type ProjectOptions,
   UserInputError,
 } from "./model";
+import { resolveRequestedSkills } from "./skills";
 
 const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
@@ -71,6 +72,20 @@ export function parseArguments(args: string[]): ParsedArguments {
       parsed.auth = value.slice("--auth=".length);
       if (!parsed.auth)
         throw new UserInputError("--auth requires `none` or `better-auth` when using `=`.");
+      continue;
+    }
+
+    if (value === "--skills") {
+      const optionValue = takeValue(args, index, value);
+      index += 1;
+      parsed.skills = optionValue;
+      continue;
+    }
+    if (value.startsWith("--skills=")) {
+      const separator = value.indexOf("=");
+      const optionValue = value.slice(separator + 1);
+      if (!optionValue) throw new UserInputError("--skills requires a value.");
+      parsed.skills = optionValue;
       continue;
     }
 
@@ -335,12 +350,15 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
       : resolve(parsed.flarePackagePath)
     : undefined;
 
+  const skills = resolveRequestedSkills(parsed.skills);
+
   return {
     destination,
     projectName,
     preset,
     database: db,
     auth,
+    skills,
     ...(flarePackageTarget ? { flarePackagePath: flarePackageTarget } : {}),
   };
 }

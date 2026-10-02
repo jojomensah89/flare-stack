@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -47,6 +48,7 @@ export interface LocalD1StateFileSystem {
   mkdir(path: string): void;
   rename(from: string, to: string): void;
   removeTree(path: string): void;
+  copyTree(from: string, to: string): void;
 }
 
 const localD1StateFileSystem: LocalD1StateFileSystem = {
@@ -66,6 +68,7 @@ const localD1StateFileSystem: LocalD1StateFileSystem = {
   mkdir: (path) => mkdirSync(path),
   rename: (from, to) => renameSync(from, to),
   removeTree: (path) => rmSync(path, { recursive: true, force: false }),
+  copyTree: (from, to) => cpSync(from, to, { recursive: true }),
 };
 
 function equalPath(left: string, right: string): boolean {
@@ -129,10 +132,11 @@ function makeResetArtifactPath(
   kind: "backup" | "failed",
   idFactory: () => string,
   fileSystem: LocalD1StateFileSystem,
+  prefix = "flare-reset",
 ): string {
   const parent = dirname(statePath);
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const candidate = join(parent, `${basename(statePath)}.flare-reset-${kind}-${idFactory()}`);
+    const candidate = join(parent, `${basename(statePath)}.${prefix}-${kind}-${idFactory()}`);
     if (dirname(candidate) !== parent || fileSystem.kind(candidate) !== "missing") continue;
     return candidate;
   }
@@ -140,6 +144,11 @@ function makeResetArtifactPath(
 }
 
 export interface LocalD1ResetResult {
+  statePath: string;
+  retainedBackup?: string;
+}
+
+export interface LocalD1SeedResult {
   statePath: string;
   retainedBackup?: string;
 }
@@ -220,6 +229,74 @@ export async function resetLocalD1State(
           ? ` Previous local state was restored at ${statePath}.`
           : ` No previous state existed; the failed reset state was removed.`;
     throw new Error(`D1 local migration replay failed: ${String(replayError)}.${recovery}`);
+  }
+
+  if (backupPath) {
+    try {
+      fileSystem.removeTree(backupPath);
+    } catch {
+      return { statePath, retainedBackup: backupPath };
+    }
+  }
+  return { statePath };
+}
+
+/** Snapshot existing local state, execute seed statements, and rollback on failure. */
+export async function seedLocalD1State(
+  project: ProjectContext,
+  executeSeed: () => Promise<void>,
+  fileSystem: LocalD1StateFileSystem = localD1StateFileSystem,
+  idFactory: () => string = randomUUID,
+): Promise<LocalD1SeedResult> {
+  const statePath = getCanonicalLocalD1StatePath(project, fileSystem);
+  const wranglerDirectory = dirname(statePath);
+  if (fileSystem.kind(wranglerDirectory) === "missing") fileSystem.mkdir(wranglerDirectory);
+  if (fileSystem.kind(wranglerDirectory) !== "directory") {
+    throw new Error(`Refusing local D1 seed: ${wranglerDirectory} must be a directory.`);
+  }
+  if (!equalPath(fileSystem.realpath(wranglerDirectory), wranglerDirectory)) {
+    throw new Error(`Refusing local D1 seed: ${wranglerDirectory} changed to a non-project path.`);
+  }
+
+  const hadState = fileSystem.kind(statePath) === "directory";
+  const backupPath = hadState
+    ? makeResetArtifactPath(statePath, "backup", idFactory, fileSystem, "flare-seed")
+    : undefined;
+
+  if (backupPath) {
+    fileSystem.copyTree(statePath, backupPath);
+  }
+
+  try {
+    await executeSeed();
+  } catch (seedError) {
+    const recoveryErrors: string[] = [];
+    if (backupPath) {
+      try {
+        if (fileSystem.kind(statePath) !== "missing") {
+          fileSystem.removeTree(statePath);
+        }
+        fileSystem.rename(backupPath, statePath);
+      } catch (error) {
+        recoveryErrors.push(
+          `could not restore previous local state from ${backupPath}: ${String(error)}`,
+        );
+      }
+    } else if (fileSystem.kind(statePath) !== "missing") {
+      try {
+        fileSystem.removeTree(statePath);
+      } catch (error) {
+        recoveryErrors.push(`could not clean up failed seed state: ${String(error)}`);
+      }
+    }
+
+    const recovery =
+      recoveryErrors.length > 0
+        ? ` Recovery needs attention: ${recoveryErrors.join("; ")}.`
+        : backupPath
+          ? ` Previous local state was restored at ${statePath}.`
+          : ` No previous state existed; the failed seed state was removed.`;
+    throw new Error(`D1 local seed failed: ${String(seedError)}.${recovery}`);
   }
 
   if (backupPath) {
@@ -576,7 +653,7 @@ export async function commandDb(
   subargs: string[],
 ): Promise<number> {
   const output = getOutput(deps);
-  expectOnlyFlags(subargs, ["--env", "--allow-destructive", "--provider"]);
+  expectOnlyFlags(subargs, ["--env", "--allow-destructive", "--provider", "--yes", "--seed"]);
   const provider = getOption(subargs, "--provider") ?? project.config.database;
   if (provider !== project.config.database) {
     throw new Error(
@@ -646,10 +723,14 @@ export async function commandDb(
           "D1 reset requires an explicit `--env local`; remote or implicit reset targets are refused before filesystem changes.",
         );
       }
+      const shouldSeed = hasOption(subargs, "--seed");
+      const seedFile = shouldSeed ? getLocalD1SeedFile(project) : undefined;
       const localBinding = getAppD1Bindings(project).development;
       const statePath = getCanonicalLocalD1StatePath(project);
+      const skipConfirm = hasOption(subargs, "--yes");
       const confirm = deps.confirm ?? defaultConfirm;
       if (
+        !skipConfirm &&
         !(await confirm(
           `Reset local D1 database ${localBinding.databaseName} by replacing only ${statePath} and replaying migrations? This deletes local rows.`,
         ))
@@ -657,10 +738,34 @@ export async function commandDb(
         output.log("Cancelled; no local D1 files were changed.");
         return 1;
       }
-      const result = await resetLocalD1State(project, () =>
-        applyD1Migrations(project, deps, "local"),
-      );
+      const result = await resetLocalD1State(project, async () => {
+        await applyD1Migrations(project, deps, "local");
+        if (shouldSeed && seedFile) {
+          const seed = runTool(
+            deps,
+            "wrangler",
+            withConfig(project, [
+              "d1",
+              "execute",
+              localBinding.binding,
+              "--local",
+              "--env",
+              "development",
+              "--persist-to",
+              statePath,
+              "--file",
+              seedFile,
+            ]),
+            workerDirectory(project),
+          );
+          printCommandOutput(output, seed);
+          assertCommandSucceeded(seed, `Seed local D1 from ${seedFile}`);
+        }
+      });
       output.log(`Reset local D1 database ${localBinding.databaseName} at ${result.statePath}.`);
+      if (shouldSeed && seedFile) {
+        output.log(`Seeded local D1 database ${localBinding.databaseName} from ${seedFile}.`);
+      }
       if (result.retainedBackup) {
         output.warn(
           `Reset and migration replay succeeded, but the previous local state snapshot remains at ${result.retainedBackup}; remove it after review.`,
@@ -671,26 +776,33 @@ export async function commandDb(
     const seedFile = getLocalD1SeedFile(project);
     const localBinding = getAppD1Bindings(project).development;
     const statePath = getCanonicalLocalD1StatePath(project);
-    const seed = runTool(
-      deps,
-      "wrangler",
-      withConfig(project, [
-        "d1",
-        "execute",
-        localBinding.binding,
-        "--local",
-        "--env",
-        "development",
-        "--persist-to",
-        statePath,
-        "--file",
-        seedFile,
-      ]),
-      workerDirectory(project),
-    );
-    printCommandOutput(output, seed);
-    assertCommandSucceeded(seed, `Seed local D1 from ${seedFile}`);
+    const result = await seedLocalD1State(project, async () => {
+      const seed = runTool(
+        deps,
+        "wrangler",
+        withConfig(project, [
+          "d1",
+          "execute",
+          localBinding.binding,
+          "--local",
+          "--env",
+          "development",
+          "--persist-to",
+          statePath,
+          "--file",
+          seedFile,
+        ]),
+        workerDirectory(project),
+      );
+      printCommandOutput(output, seed);
+      assertCommandSucceeded(seed, `Seed local D1 from ${seedFile}`);
+    });
     output.log(`Seeded local D1 database ${localBinding.databaseName} from ${seedFile}.`);
+    if (result.retainedBackup) {
+      output.warn(
+        `Seed succeeded, but the previous local state snapshot remains at ${result.retainedBackup}; remove it after review.`,
+      );
+    }
     return 0;
   }
   throw new Error("Usage: flare db <migrate|status|seed|reset> [--env local|preview|production].");

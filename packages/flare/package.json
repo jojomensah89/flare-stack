@@ -14,7 +14,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "verify": "bun run ./scripts/verify-lifecycle.ts"
+    "verify": "bun run ./scripts/verify-lifecycle.ts && bun run ./scripts/verify-db-ops.ts && bun run ./scripts/verify-operations.ts && bun run ./scripts/verify-host-discovery.ts && bun run ./scripts/verify-extension-cli.ts"
   },
   "devDependencies": {
     "typescript": "7.0.2"

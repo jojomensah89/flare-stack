@@ -12,6 +12,7 @@ export interface ProjectOptions {
   preset: Preset;
   database: Database;
   auth: Auth;
+  skills?: string[];
   flarePackagePath?: string;
 }
 
@@ -20,6 +21,7 @@ export interface ParsedArguments {
   preset?: string;
   database?: string;
   auth?: string;
+  skills?: string;
   flarePackagePath?: string;
   help: boolean;
 }

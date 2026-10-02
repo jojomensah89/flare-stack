@@ -5,5 +5,10 @@
   },
   "editor.formatOnSave": true,
   "oxc.lint.enable": true,
-  "oxc.fmt.enable": true
+  "oxc.fmt.enable": true,
+  "files.watcherExclude": {
+    "**/packages/create-flare-stack/templates/**": true,
+    "**/scratch/**": true,
+    "**/.test-sandboxes/**": true
+  }
 }

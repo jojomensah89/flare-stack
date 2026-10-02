@@ -19,6 +19,13 @@ When a package script name collides with a Bun built-in, use `bun run <script>`.
 
 Read the workspace-specific AGENTS.md before modifying a deployable app.
 
+## Template Overlays & Scaffolding
+
+- Files under `packages/create-flare-stack/templates/` are partial, unrendered overlay slices.
+- Do not evaluate template slices as standalone monorepo packages; verify them via `bun run test` or verification scripts (`verify-fixtures.ts`, `verify-lifecycle.ts`).
+- When defining presets or recipes, always enumerate the complete tech stack explicitly (runtime, framework, auth, database, tooling).
+- Always run `bun run format` after modifying template slices or recipe registries.
+
 ## Cloudflare
 
 This project targets Cloudflare Workers. Prefer Workers-compatible APIs and the generated Cloudflare bindings/types.

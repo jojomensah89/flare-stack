@@ -1,0 +1,17 @@
+{
+  "version": "0.14.1",
+  "recipes": [
+    {
+      "name": "analytics",
+      "description": "Cloudflare Analytics Engine dataset binding for telemetry and metrics",
+      "supportedPresets": ["app", "fullstack", "worker"],
+      "capabilities": ["analytics"]
+    },
+    {
+      "name": "queue",
+      "description": "Cloudflare Queue producer and consumer bindings for background jobs",
+      "supportedPresets": ["app", "fullstack", "worker"],
+      "capabilities": ["queue"]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "queue",
+  "description": "Cloudflare Queue producer and consumer bindings for background jobs",
+  "supportedPresets": ["app", "fullstack", "worker"],
+  "capabilities": ["queue"],
+  "layers": ["common"]
+}

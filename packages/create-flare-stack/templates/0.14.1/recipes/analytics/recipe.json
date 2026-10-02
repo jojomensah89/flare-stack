@@ -1,0 +1,7 @@
+{
+  "name": "analytics",
+  "description": "Cloudflare Analytics Engine dataset binding for telemetry and metrics",
+  "supportedPresets": ["app", "fullstack", "worker"],
+  "capabilities": ["analytics"],
+  "layers": ["common"]
+}

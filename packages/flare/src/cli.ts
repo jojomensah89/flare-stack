@@ -17,6 +17,7 @@ import { commandPreview } from "./commands/preview";
 import { commandRollback } from "./commands/rollback";
 import { commandSecrets } from "./commands/secrets";
 import { commandSetupCloudflare } from "./commands/setup";
+import { commandAddRecipe, commandRecipes } from "./commands/recipes";
 import { commandUpgrade } from "./commands/upgrade";
 import { findProjectRoot, loadProject } from "./project";
 import { commandError } from "./runner";
@@ -31,12 +32,13 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
 
   if (!command || command === "--help" || command === "-h" || command === "help") {
     output.log(
-      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset>, logs, rollback, health <url>, upgrade\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
+      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset>, logs, rollback, health <url>, upgrade, add <recipe>, recipes [list]\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
     );
     return 0;
   }
 
   if (command === "health" || command === "health-check") return commandHealth(args, deps);
+  if (command === "recipes") return commandRecipes(deps, args);
   if (command === "branch-preview-guard" || command === "cloudflare:branch-preview-guard") {
     output.log("Fullstack branch Previews are disabled; no Worker upload was attempted.");
     return 0;
@@ -92,6 +94,8 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
       return commandRollback(project, deps, args);
     case "upgrade":
       return commandUpgrade(project, deps, args);
+    case "add":
+      return commandAddRecipe(project, deps, args);
     case "deployments":
     case "resources":
       throw new Error(
@@ -99,7 +103,7 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
       );
     default:
       output.log(
-        "Flare Lifecycle CLI v0.14.1\nCommands: setup, preview, deploy, doctor, env, secrets, db, logs, rollback, health, upgrade",
+        "Flare Lifecycle CLI v0.14.1\nCommands: setup, preview, deploy, doctor, env, secrets, db, logs, rollback, health, upgrade, add, recipes",
       );
       return command ? 2 : 0;
   }

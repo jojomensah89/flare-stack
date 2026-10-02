@@ -6,7 +6,8 @@
   },
   "files": [
     "bin/",
-    "src/"
+    "src/",
+    "templates/"
   ],
   "type": "module",
   "main": "./src/index.ts",

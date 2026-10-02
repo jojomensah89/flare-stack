@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,9 +38,18 @@ export function findProjectRoot(startDirectory: string): string {
 export async function loadProject(startDirectory: string): Promise<ProjectContext> {
   const root = findProjectRoot(startDirectory);
   const configFile = join(root, "flare.config.ts");
-  const configModule = await import(
-    `${pathToFileURL(configFile).href}?flare_reload=${randomUUID()}`
-  );
+  const tempReloadFile = join(root, `.flare.config.${randomUUID()}.tmp.ts`);
+  copyFileSync(configFile, tempReloadFile);
+  let configModule: { default: unknown };
+  try {
+    configModule = (await import(pathToFileURL(tempReloadFile).href)) as { default: unknown };
+  } finally {
+    try {
+      unlinkSync(tempReloadFile);
+    } catch {
+      // Ignore cleanup error
+    }
+  }
   const config = validateFlareConfig(configModule.default);
   if (config.preset === "extension") {
     return {

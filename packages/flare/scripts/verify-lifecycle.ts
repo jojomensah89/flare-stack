@@ -23,6 +23,7 @@ interface FixtureOptions {
   database?: "none" | "d1" | "neon";
   requiredSecrets?: string[];
   flareVersion?: string;
+  preset?: "app" | "fullstack" | "worker" | "extension";
 }
 
 function success(stdout = ""): RunResult {
@@ -33,6 +34,7 @@ function writeFixture(root: string, options: FixtureOptions = {}): void {
   const database = options.database ?? "none";
   const requiredSecrets = options.requiredSecrets ?? [];
   const flareVersion = options.flareVersion ?? "0.14.1";
+  const preset = options.preset ?? "app";
   const webDirectory = join(root, "apps", "web");
   mkdirSync(webDirectory, { recursive: true });
   mkdirSync(join(root, "scripts"), { recursive: true });
@@ -43,7 +45,7 @@ function writeFixture(root: string, options: FixtureOptions = {}): void {
         schemaVersion: 1,
         flareVersion,
         productionBranch: "main",
-        preset: "app",
+        preset,
         database,
         auth: "none",
         observability: "none",
@@ -1158,6 +1160,144 @@ async function verifyUpgradeLifecycle(): Promise<void> {
   });
 }
 
+async function verifyRecipesLifecycle(): Promise<void> {
+  // 1. Browse recipes outside any project
+  const outsideLogs: string[] = [];
+  const outsideErrors: string[] = [];
+  const outsideDeps: CliDependencies = {
+    cwd: tmpdir(),
+    output: {
+      log: (msg) => outsideLogs.push(String(msg)),
+      warn: (msg) => outsideLogs.push(String(msg)),
+      error: (msg) => outsideErrors.push(String(msg)),
+    },
+  };
+  let status = await runCli(["recipes"], outsideDeps);
+  assert.equal(status, 0);
+  assert.ok(outsideLogs.some((msg) => msg.includes("Available Flare Stack Recipes")));
+  assert.ok(outsideLogs.some((msg) => msg.includes("analytics")));
+  assert.ok(outsideLogs.some((msg) => msg.includes("queue")));
+
+  // 1b. Unknown recipes subcommand
+  outsideErrors.length = 0;
+  status = await runCli(["recipes", "unknown"], outsideDeps);
+  assert.equal(status, 1);
+  assert.ok(outsideErrors.some((msg) => msg.includes("Unsupported subcommand")));
+
+  // 1c. Reject unsupported preset (extension)
+  await withFixture({ preset: "extension" }, async (root) => {
+    const errors: string[] = [];
+    const deps: CliDependencies = {
+      cwd: root,
+      output: {
+        log: () => undefined,
+        warn: () => undefined,
+        error: (msg) => errors.push(String(msg)),
+      },
+    };
+    const extensionStatus = await runCli(["add", "analytics"], deps);
+    assert.equal(extensionStatus, 1);
+    assert.ok(
+      errors.some((msg) =>
+        msg.includes('Recipe "analytics" is not supported for preset "extension"'),
+      ),
+    );
+  });
+
+  // 2. Recipe application inside an app project
+  await withFixture({}, async (root) => {
+    const { runner, calls } = createRunner(root);
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const deps: CliDependencies = {
+      cwd: root,
+      runner,
+      output: {
+        log: (msg) => logs.push(String(msg)),
+        warn: (msg) => logs.push(String(msg)),
+        error: (msg) => errors.push(String(msg)),
+      },
+    };
+
+    // 2a. Unknown recipe
+    errors.length = 0;
+    status = await runCli(["add", "nonexistent"], deps);
+    assert.equal(status, 1);
+    assert.ok(errors.some((msg) => msg.includes('Unknown recipe "nonexistent"')));
+
+    // 2b. Dry-run
+    logs.length = 0;
+    status = await runCli(["add", "analytics", "--dry-run"], deps);
+    assert.equal(status, 0);
+    assert.ok(logs.some((msg) => msg.includes('[dry-run] Would apply recipe "analytics"')));
+    const analyticsFile = join(root, "packages", "observability", "src", "analytics.ts");
+    assert.ok(!existsSync(analyticsFile), "Dry run must not create files");
+
+    // 2c. Successful add
+    logs.length = 0;
+    calls.length = 0;
+    status = await runCli(["add", "analytics"], deps);
+    assert.equal(status, 0);
+    assert.ok(logs.some((msg) => msg.includes('Successfully applied recipe "analytics"!')));
+    assert.ok(existsSync(analyticsFile), "Overlay file must be created");
+    assert.ok(readFileSync(analyticsFile, "utf8").includes("AnalyticsDataPoint"));
+
+    // Verify flare.config.ts updated with capability
+    const configPath = join(root, "flare.config.ts");
+    const updatedConfig = readFileSync(configPath, "utf8");
+    assert.ok(
+      updatedConfig.includes('"analytics"'),
+      "flare.config.ts must include analytics capability",
+    );
+
+    // Verify bun install and setup called
+    assert.ok(calls.some((c) => c.command === "bun" && c.args[0] === "install"));
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.command === "bun" &&
+          c.args[0] === "run" &&
+          (c.args[1] === "setup" || c.args[1]?.endsWith("setup.ts")),
+      ),
+    );
+
+    // 2d. Re-applying already installed recipe without conflict
+    logs.length = 0;
+    status = await runCli(["add", "analytics"], deps);
+    assert.equal(status, 0);
+    assert.ok(logs.some((msg) => msg.includes("already applied to this project")));
+
+    // 2e. Conflict detection: modify file then try adding without --replace
+    writeFileSync(analyticsFile, "// Custom modifications", "utf8");
+    errors.length = 0;
+    status = await runCli(["add", "analytics"], deps);
+    assert.equal(status, 1);
+    assert.ok(errors.some((msg) => msg.includes("Pass --replace to overwrite")));
+
+    // 2f. Force overwrite with --replace
+    logs.length = 0;
+    status = await runCli(["add", "analytics", "--replace"], deps);
+    assert.equal(status, 0);
+    assert.ok(
+      readFileSync(analyticsFile, "utf8").includes("AnalyticsDataPoint"),
+      "File must be overwritten with recipe overlay",
+    );
+
+    // 2g. Add second recipe (queue)
+    logs.length = 0;
+    status = await runCli(["add", "queue"], deps);
+    assert.equal(status, 0);
+    const queueFile = join(root, "packages", "observability", "src", "queue.ts");
+    assert.ok(existsSync(queueFile), "Queue overlay file must be created");
+    assert.ok(readFileSync(queueFile, "utf8").includes("QueueProducer"));
+    const finalConfig = readFileSync(configPath, "utf8");
+    assert.ok(
+      finalConfig.includes('"analytics"') && finalConfig.includes('"queue"'),
+      "Both capabilities recorded",
+    );
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -1172,6 +1312,7 @@ async function main(): Promise<void> {
   await verifyExtensionLifecycle();
   await verifyNeonLifecycle();
   await verifyUpgradeLifecycle();
+  await verifyRecipesLifecycle();
   assert.equal(
     await runCli(["--help"], {
       cwd: tmpdir(),
@@ -1180,7 +1321,7 @@ async function main(): Promise<void> {
     0,
   );
   console.log(
-    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, standalone worker lifecycle, upgrade lifecycle, and help. No remote operation was performed.",
+    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, standalone worker lifecycle, upgrade lifecycle, recipe lifecycle, and help. No remote operation was performed.",
   );
 }
 

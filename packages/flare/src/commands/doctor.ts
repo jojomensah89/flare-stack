@@ -23,6 +23,11 @@ export async function commandDoctor(
   args: string[],
 ): Promise<number> {
   expectOnlyFlags(args, ["--remote"]);
+  if (project.config.preset === "extension") {
+    throw new Error(
+      "The extension preset is a client-side browser extension and does not support `flare doctor`. Run `bun run check`, `bun run build`, or `bun run package` instead.",
+    );
+  }
   const output = getOutput(deps);
   const problems: string[] = [];
   const check = (name: string, ok: boolean, fix?: string) => {

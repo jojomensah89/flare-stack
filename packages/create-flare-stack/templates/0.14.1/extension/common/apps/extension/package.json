@@ -1,0 +1,34 @@
+{
+  "name": "@repo/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip --browser chrome --mv3",
+    "zip:chrome": "wxt zip --browser chrome --mv3",
+    "zip:firefox": "wxt zip --browser firefox --mv3",
+    "zip:edge": "wxt zip --browser edge --mv3",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/ui": "workspace:*",
+    "clsx": "2.1.1",
+    "lucide-react": "1.49.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "3.7.0"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@wxt-dev/module-react": "1.2.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "wxt": "0.21.4"
+  }
+}

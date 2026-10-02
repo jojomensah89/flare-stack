@@ -202,14 +202,51 @@ function createRunner(
         );
       }
     }
+    if (subcommand === "deployments" && args[1] === "list") {
+      // Paired release history: current (v2) and prior rollback target (v1)
+      const isServer = runOptions.cwd === join(root, "apps", "server");
+      const workerLabel = isServer ? "server" : "web";
+      return success(
+        JSON.stringify([
+          {
+            id: `deployment-${workerLabel}-2`,
+            created_on: "2026-10-01T12:00:00Z",
+            author_email: "fixture@test",
+            source: "wrangler",
+            annotations: { "workers/tag": "flare:fixture-release-2" },
+            versions: [{ version_id: `${workerLabel}-version-2`, percentage: 100 }],
+          },
+          {
+            id: `deployment-${workerLabel}-1`,
+            created_on: "2026-10-01T10:00:00Z",
+            author_email: "fixture@test",
+            source: "wrangler",
+            annotations: { "workers/tag": "flare:fixture-release-1" },
+            versions: [{ version_id: `${workerLabel}-version-1`, percentage: 100 }],
+          },
+        ]),
+      );
+    }
+    if (subcommand === "versions" && args[1] === "view") {
+      const versionId = args[2];
+      return success(
+        JSON.stringify({
+          id: versionId,
+          annotations: {
+            "workers/tag": versionId?.includes("-1")
+              ? "flare:fixture-release-1"
+              : "flare:fixture-release-2",
+          },
+          metadata: {
+            created_on: versionId?.includes("-1") ? "2026-10-01T10:00:00Z" : "2026-10-01T12:00:00Z",
+          },
+        }),
+      );
+    }
     if (subcommand === "rollback") {
       if (runOptions.cwd === join(root, "apps", "server")) {
         return success("Rolled back fixture-server\nhttps://fixture-server.workers.dev");
       }
-      assert.ok(
-        args.includes("--config"),
-        "rollback uses the source config and does not need a fresh build",
-      );
       return success(`Rolled back ${fixtureWorker}\nhttps://${fixtureWorker}.workers.dev`);
     }
     throw new Error(`Unexpected fake Wrangler command: ${args.join(" ")}`);
@@ -700,8 +737,16 @@ async function verifyFullstackDeployment(): Promise<void> {
     assert.ok(serverRollback, "Must rollback apps/server");
     assert.ok(webRollback, "Must rollback apps/web");
     assert.ok(
-      calls.indexOf(serverRollback) < calls.indexOf(webRollback),
-      "Server Worker must be rolled back before web Worker",
+      calls.indexOf(webRollback) < calls.indexOf(serverRollback),
+      "Web Worker must be rolled back before server Worker in paired rollback",
+    );
+    assert.ok(
+      webRollback.args[1] === "web-version-1",
+      "Web rollback must target the prior paired version ID",
+    );
+    assert.ok(
+      serverRollback.args[1] === "server-version-1",
+      "Server rollback must target the prior paired version ID",
     );
     assert.ok(
       healthChecks.includes("/api/health"),
@@ -880,6 +925,101 @@ async function verifyStandaloneWorkerLifecycle(): Promise<void> {
   });
 }
 
+async function verifyExtensionLifecycle(): Promise<void> {
+  await withFixture({ database: "none" }, async (root) => {
+    const extensionDir = join(root, "apps", "extension");
+    mkdirSync(extensionDir, { recursive: true });
+    writeFileSync(
+      join(root, "flare.config.ts"),
+      `export default ${JSON.stringify(
+        {
+          schemaVersion: 1,
+          flareVersion: "0.14.1",
+          productionBranch: "main",
+          preset: "extension",
+          database: "none",
+          auth: "none",
+          observability: "none",
+          uiLint: "none",
+          capabilities: [],
+          deployment: { provider: "cloudflare", productionBranch: "main" },
+        },
+        null,
+        2,
+      )};\n`,
+      "utf8",
+    );
+    writeFileSync(
+      join(root, ".gitignore"),
+      "node_modules\n.wxt\n.dev.vars\n.preview.vars\n",
+      "utf8",
+    );
+
+    const errors: string[] = [];
+    const logs: string[] = [];
+    const runner: CommandRunner = () => success();
+    const deps: CliDependencies = {
+      cwd: root,
+      runner,
+      output: {
+        log: (msg) => logs.push(String(msg)),
+        warn: () => undefined,
+        error: (msg) => errors.push(String(msg)),
+      },
+      fetcher: async () => new Response("ok", { status: 200 }),
+    };
+
+    // Extension deploy must fail-closed with helpful remediation
+    errors.length = 0;
+    const deployStatus = await runCli(["deploy"], deps);
+    assert.notEqual(deployStatus, 0, "Extension deploy must fail");
+    assert.ok(
+      errors.some(
+        (err) => err.includes("client-side browser extension") && err.includes("bun package"),
+      ),
+      "Deploy error must explain extension preset policy",
+    );
+
+    // Extension preview must fail-closed with helpful remediation
+    errors.length = 0;
+    const previewStatus = await runCli(["preview"], deps);
+    assert.notEqual(previewStatus, 0, "Extension preview must fail");
+    assert.ok(
+      errors.some((err) => err.includes("client-side browser extension")),
+      "Preview error must explain extension preset policy",
+    );
+
+    // Extension db commands must fail-closed
+    errors.length = 0;
+    const dbStatus = await runCli(["db", "status"], deps);
+    assert.notEqual(dbStatus, 0, "Extension db status must fail");
+    assert.ok(
+      errors.some((err) => err.includes("has no database")),
+      "DB status error must explain extension has no database",
+    );
+
+    // Local setup should succeed cleanly for extension
+    logs.length = 0;
+    await runLocalSetup({
+      startDirectory: root,
+      runner,
+      output: {
+        log: (msg) => logs.push(String(msg)),
+        warn: () => undefined,
+        error: () => undefined,
+      },
+    });
+    assert.ok(
+      logs.some((msg) => msg.includes("Preparing the local extension workspace...")),
+      "Must log extension workspace preparation",
+    );
+    assert.ok(
+      logs.some((msg) => msg.includes("bun package")),
+      "Must mention bun package upon setup completion",
+    );
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -891,6 +1031,7 @@ async function main(): Promise<void> {
   await verifyInvalidHostInputs();
   await verifyFullstackDeployment();
   await verifyStandaloneWorkerLifecycle();
+  await verifyExtensionLifecycle();
   await verifyNeonLifecycle();
   assert.equal(
     await runCli(["--help"], {

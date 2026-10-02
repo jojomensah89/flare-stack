@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   clearCloudflareEnvironment,
   ensureProductionEnvironment,
@@ -17,7 +18,12 @@ import { readMigrationState, readNeonMigrationState } from "./db";
 import { deployedUrls, verifyAppHealth } from "./health";
 import { validateRemoteHosts } from "./hosts";
 import { missingSecretNames, remoteSecretNames, reportSecretNames } from "./secrets";
-import { getRequiredSecrets, requireSupportedAppDatabase, type ProjectContext } from "../project";
+import {
+  getRequiredSecrets,
+  requireApp,
+  requireSupportedAppDatabase,
+  type ProjectContext,
+} from "../project";
 import { assertCommandSucceeded } from "../runner";
 
 export async function commandDeploy(
@@ -26,6 +32,7 @@ export async function commandDeploy(
   args: string[],
 ): Promise<number> {
   expectOnlyFlags(args, ["--cloudflare-only", "--url"]);
+  requireApp(project, "flare deploy");
   requireSupportedAppDatabase(project, "flare deploy");
   ensureProductionEnvironment(project, deps);
   validateRemoteHosts(project);
@@ -58,6 +65,12 @@ export async function commandDeploy(
 
   await runCheckAndBuild(project, deps, cloudflareOnly, "production");
 
+  const pairedReleaseTag =
+    project.config.preset === "fullstack" ? `flare:${randomUUID()}` : undefined;
+  if (pairedReleaseTag) {
+    output.log(`Coordinated fullstack release tag: ${pairedReleaseTag}`);
+  }
+
   if (project.config.preset === "worker") {
     output.log("Deploying Worker (apps/server)...");
     const result = runTool(deps, "wrangler", ["deploy"], serverDirectory(project), {
@@ -87,10 +100,17 @@ export async function commandDeploy(
   }
 
   if (project.config.preset === "fullstack") {
+    if (!pairedReleaseTag) {
+      throw new Error("Fullstack deploy is missing its coordinated release tag.");
+    }
     output.log("Deploying backend server Worker (apps/server)...");
-    const serverResult = runTool(deps, "wrangler", ["deploy"], serverDirectory(project), {
-      env: clearCloudflareEnvironment(deps),
-    });
+    const serverResult = runTool(
+      deps,
+      "wrangler",
+      ["deploy", "--tag", pairedReleaseTag],
+      serverDirectory(project),
+      { env: clearCloudflareEnvironment(deps) },
+    );
     printCommandOutput(output, serverResult);
     assertCommandSucceeded(serverResult, "Production Server Worker deploy");
   }
@@ -100,7 +120,10 @@ export async function commandDeploy(
       ? "Deploying frontend web Worker (apps/web)..."
       : "Deploying Worker (apps/web)...",
   );
-  const argsForWrangler = withBuiltDeploymentConfig(project, ["deploy"]);
+  const argsForWrangler = withBuiltDeploymentConfig(
+    project,
+    pairedReleaseTag ? ["deploy", "--tag", pairedReleaseTag] : ["deploy"],
+  );
   const result = runTool(deps, "wrangler", argsForWrangler, webDirectory(project), {
     env: clearCloudflareEnvironment(deps),
   });

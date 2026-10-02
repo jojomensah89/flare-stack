@@ -1,8 +1,21 @@
-import { createDb, items } from "@repo/db";
+import { items, withDb } from "@repo/db/neon";
 import { logRequestEvent } from "@repo/observability";
 import { createServerFn } from "@tanstack/react-start";
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { getServerClient } from "../lib/server-client";
+
+type NeonWorkerEnvironment = {
+  DATABASE_URL?: string;
+};
+
+function getDatabaseUrl() {
+  const databaseUrl =
+    (env as unknown as NeonWorkerEnvironment).DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("Neon DATABASE_URL is required for database access");
+  }
+  return databaseUrl;
+}
 
 export const getServerStatus = createServerFn({ method: "GET" }).handler(async () => ({
   status: "healthy",
@@ -13,21 +26,20 @@ export const getServerStatus = createServerFn({ method: "GET" }).handler(async (
 
 export const getDbItems = createServerFn({ method: "GET" }).handler(async () => {
   const startedAt = Date.now();
-  const dbUrl =
-    (env as unknown as { DATABASE_URL?: string }).DATABASE_URL ?? process.env.DATABASE_URL ?? "";
-  const db = createDb(dbUrl);
-  const result = await db.select().from(items);
+  return withDb({ DATABASE_URL: getDatabaseUrl() }, { waitUntil }, async (db) => {
+    const result = await db.select().from(items);
 
-  logRequestEvent({
-    requestId: crypto.randomUUID(),
-    method: "GET",
-    path: "/server/db-items",
-    status: 200,
-    outcome: "success",
-    durationMs: Date.now() - startedAt,
+    logRequestEvent({
+      requestId: crypto.randomUUID(),
+      method: "GET",
+      path: "/server/db-items",
+      status: 200,
+      outcome: "success",
+      durationMs: Date.now() - startedAt,
+    });
+
+    return result;
   });
-
-  return result;
 });
 
 export const addDbItem = createServerFn({ method: "POST" })
@@ -40,26 +52,25 @@ export const addDbItem = createServerFn({ method: "POST" })
   })
   .handler(async ({ data: name }) => {
     const startedAt = Date.now();
-    const dbUrl =
-      (env as unknown as { DATABASE_URL?: string }).DATABASE_URL ?? process.env.DATABASE_URL ?? "";
-    const db = createDb(dbUrl);
     const item = {
       id: crypto.randomUUID(),
       name,
       createdAt: new Date(),
     };
-    await db.insert(items).values(item);
+    return withDb({ DATABASE_URL: getDatabaseUrl() }, { waitUntil }, async (db) => {
+      await db.insert(items).values(item);
 
-    logRequestEvent({
-      requestId: crypto.randomUUID(),
-      method: "POST",
-      path: "/server/db-items",
-      status: 201,
-      outcome: "success",
-      durationMs: Date.now() - startedAt,
+      logRequestEvent({
+        requestId: crypto.randomUUID(),
+        method: "POST",
+        path: "/server/db-items",
+        status: 201,
+        outcome: "success",
+        durationMs: Date.now() - startedAt,
+      });
+
+      return item;
     });
-
-    return item;
   });
 
 export const getServerBackendItems = createServerFn({ method: "GET" }).handler(async () => {

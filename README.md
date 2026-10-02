@@ -20,10 +20,11 @@ The canonical reference is the TanStack Start `app` preset with D1 and Better Au
 | worker    | none     | none           |
 | worker    | D1       | none           |
 | worker    | Neon     | none           |
+| extension | none     | none           |
 
-Neon profiles use `@neondatabase/serverless` with Drizzle ORM and Postgres-native migrations. `DATABASE_URL` is validated at setup and used at runtime via a request-scoped pool helper. Fullstack profiles deploy paired backend server and frontend web Workers communicating via Cloudflare Service Bindings and typed Hono RPC, with coordinated preview and rollback. Standalone Worker profiles (`--preset worker`) scaffold a standalone `apps/server` Cloudflare Worker with Hono, evlog structured logging, optional D1 or Neon persistence with Drizzle, and full Flare lifecycle commands (`deploy`, `preview`, `rollback`, `db:*`).
+Neon profiles use `@neondatabase/serverless` with Drizzle ORM and Postgres-native migrations. `DATABASE_URL` is validated at setup and used at runtime via a request-scoped pool helper. Fullstack profiles deploy paired backend server and frontend web Workers communicating via Cloudflare Service Bindings and typed Hono RPC, with coordinated preview and rollback. Standalone Worker profiles (`--preset worker`) scaffold a standalone `apps/server` Cloudflare Worker with Hono, evlog structured logging, optional D1 or Neon persistence with Drizzle, and full Flare lifecycle commands (`deploy`, `preview`, `rollback`, `db:*`). Browser extension profiles (`--preset extension`) scaffold a Manifest V3 extension built with WXT, React 19, Tailwind CSS v4, and shared `@repo/ui` primitives, packaged with `bun package`.
 
-Browser extension, recipes, registry, and upgrades remain roadmap work.
+Recipes, registry, and upgrades remain roadmap work.
 
 ## Reference development
 

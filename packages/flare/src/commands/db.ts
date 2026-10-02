@@ -1,5 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseEnvText } from "../env";
 import {
   getAppD1Bindings,
@@ -11,6 +20,7 @@ import {
 import { assertCommandSucceeded, commandError, type RunResult } from "../runner";
 import {
   collectObjects,
+  defaultConfirm,
   ensureProductionEnvironment,
   expectOnlyFlags,
   getEnv,
@@ -27,6 +37,223 @@ import {
   type D1DatabaseRecord,
   type MigrationState,
 } from "./common";
+
+export type LocalD1PathKind = "missing" | "directory" | "symlink" | "file" | "other";
+
+/** Filesystem seam for deterministic reset safety and recovery fixtures. */
+export interface LocalD1StateFileSystem {
+  kind(path: string): LocalD1PathKind;
+  realpath(path: string): string;
+  mkdir(path: string): void;
+  rename(from: string, to: string): void;
+  removeTree(path: string): void;
+}
+
+const localD1StateFileSystem: LocalD1StateFileSystem = {
+  kind(path) {
+    try {
+      const stats = lstatSync(path);
+      if (stats.isSymbolicLink()) return "symlink";
+      if (stats.isDirectory()) return "directory";
+      if (stats.isFile()) return "file";
+      return "other";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+      throw error;
+    }
+  },
+  realpath: (path) => realpathSync(path),
+  mkdir: (path) => mkdirSync(path),
+  rename: (from, to) => renameSync(from, to),
+  removeTree: (path) => rmSync(path, { recursive: true, force: false }),
+};
+
+function equalPath(left: string, right: string): boolean {
+  const a = resolve(left);
+  const b = resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/**
+ * Resolve and validate the one local D1 persistence path owned by this project.
+ * The project root may itself be reached through a symlink, but .wrangler and
+ * state must be real directories directly below that resolved project root.
+ */
+export function getCanonicalLocalD1StatePath(
+  project: ProjectContext,
+  fileSystem: LocalD1StateFileSystem = localD1StateFileSystem,
+): string {
+  const root = resolve(project.root);
+  const rootKind = fileSystem.kind(root);
+  if (rootKind !== "directory" && rootKind !== "symlink") {
+    throw new Error(`Cannot reset local D1 state: project root ${root} is not a real directory.`);
+  }
+  const canonicalRoot = resolve(fileSystem.realpath(root));
+  if (fileSystem.kind(canonicalRoot) !== "directory") {
+    throw new Error(
+      `Cannot reset local D1 state: project root ${root} does not resolve to a directory.`,
+    );
+  }
+  const wranglerDirectory = join(canonicalRoot, ".wrangler");
+  const statePath = join(wranglerDirectory, "state");
+
+  const wranglerKind = fileSystem.kind(wranglerDirectory);
+  if (wranglerKind !== "missing" && wranglerKind !== "directory") {
+    throw new Error(
+      `Refusing local D1 operation: ${wranglerDirectory} must be a project-owned directory, not a ${wranglerKind}.`,
+    );
+  }
+  if (
+    wranglerKind === "directory" &&
+    !equalPath(fileSystem.realpath(wranglerDirectory), wranglerDirectory)
+  ) {
+    throw new Error(
+      `Refusing local D1 operation: ${wranglerDirectory} resolves outside the project root.`,
+    );
+  }
+
+  const stateKind = fileSystem.kind(statePath);
+  if (stateKind !== "missing" && stateKind !== "directory") {
+    throw new Error(
+      `Refusing local D1 operation: ${statePath} must be a project-owned directory, not a ${stateKind}.`,
+    );
+  }
+  if (stateKind === "directory" && !equalPath(fileSystem.realpath(statePath), statePath)) {
+    throw new Error(`Refusing local D1 operation: ${statePath} resolves outside the project root.`);
+  }
+  return statePath;
+}
+
+function makeResetArtifactPath(
+  statePath: string,
+  kind: "backup" | "failed",
+  idFactory: () => string,
+  fileSystem: LocalD1StateFileSystem,
+): string {
+  const parent = dirname(statePath);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = join(parent, `${basename(statePath)}.flare-reset-${kind}-${idFactory()}`);
+    if (dirname(candidate) !== parent || fileSystem.kind(candidate) !== "missing") continue;
+    return candidate;
+  }
+  throw new Error(`Could not reserve a unique local D1 ${kind} path beside ${statePath}.`);
+}
+
+export interface LocalD1ResetResult {
+  statePath: string;
+  retainedBackup?: string;
+}
+
+/** Move aside local state, replay migrations into a clean directory, then discard the snapshot. */
+export async function resetLocalD1State(
+  project: ProjectContext,
+  replayMigrations: () => Promise<void>,
+  fileSystem: LocalD1StateFileSystem = localD1StateFileSystem,
+  idFactory: () => string = randomUUID,
+): Promise<LocalD1ResetResult> {
+  const statePath = getCanonicalLocalD1StatePath(project, fileSystem);
+  const wranglerDirectory = dirname(statePath);
+  if (fileSystem.kind(wranglerDirectory) === "missing") fileSystem.mkdir(wranglerDirectory);
+  if (fileSystem.kind(wranglerDirectory) !== "directory") {
+    throw new Error(`Refusing local D1 reset: ${wranglerDirectory} changed during validation.`);
+  }
+  if (!equalPath(fileSystem.realpath(wranglerDirectory), wranglerDirectory)) {
+    throw new Error(`Refusing local D1 reset: ${wranglerDirectory} changed to a non-project path.`);
+  }
+
+  const hadState = fileSystem.kind(statePath) === "directory";
+  const backupPath = hadState
+    ? makeResetArtifactPath(statePath, "backup", idFactory, fileSystem)
+    : undefined;
+  if (backupPath) fileSystem.rename(statePath, backupPath);
+
+  try {
+    fileSystem.mkdir(statePath);
+    if (
+      fileSystem.kind(statePath) !== "directory" ||
+      !equalPath(fileSystem.realpath(statePath), statePath)
+    ) {
+      throw new Error(`Refusing local D1 reset: ${statePath} changed during reset.`);
+    }
+    await replayMigrations();
+  } catch (replayError) {
+    const recoveryErrors: string[] = [];
+    let failedPath: string | undefined;
+    try {
+      if (fileSystem.kind(statePath) !== "missing") {
+        if (backupPath) {
+          failedPath = makeResetArtifactPath(statePath, "failed", idFactory, fileSystem);
+          fileSystem.rename(statePath, failedPath);
+        } else {
+          fileSystem.removeTree(statePath);
+        }
+      }
+    } catch (error) {
+      recoveryErrors.push(`could not move aside failed replay state: ${String(error)}`);
+    }
+
+    if (backupPath) {
+      try {
+        if (fileSystem.kind(statePath) !== "missing") {
+          throw new Error(`${statePath} is occupied; previous state remains at ${backupPath}`);
+        }
+        fileSystem.rename(backupPath, statePath);
+      } catch (error) {
+        recoveryErrors.push(
+          `could not restore the previous state from ${backupPath}: ${String(error)}`,
+        );
+      }
+    }
+
+    if (failedPath && fileSystem.kind(failedPath) !== "missing") {
+      try {
+        fileSystem.removeTree(failedPath);
+      } catch (error) {
+        recoveryErrors.push(`failed replay files remain at ${failedPath}: ${String(error)}`);
+      }
+    }
+
+    const recovery =
+      recoveryErrors.length > 0
+        ? ` Recovery needs attention: ${recoveryErrors.join("; ")}.`
+        : backupPath
+          ? ` Previous local state was restored at ${statePath}.`
+          : ` No previous state existed; the failed reset state was removed.`;
+    throw new Error(`D1 local migration replay failed: ${String(replayError)}.${recovery}`);
+  }
+
+  if (backupPath) {
+    try {
+      fileSystem.removeTree(backupPath);
+    } catch {
+      return { statePath, retainedBackup: backupPath };
+    }
+  }
+  return { statePath };
+}
+
+/** Optional project-owned seed SQL; Wrangler executes it only against local development state. */
+export function getLocalD1SeedFile(project: ProjectContext): string {
+  const seedFile = join(project.root, "packages", "db", "seed.local.sql");
+  if (!existsSync(seedFile)) {
+    throw new Error(
+      `No project-owned local D1 seed script was found at ${seedFile}. Add that SQL file with this project's seed statements; Flare never invents seed rows.`,
+    );
+  }
+  const stats = lstatSync(seedFile);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    throw new Error(`Refusing D1 seed: ${seedFile} must be a regular project-owned SQL file.`);
+  }
+  const canonicalRoot = realpathSync(project.root);
+  const canonicalSeed = realpathSync(seedFile);
+  const relativeSeed = relative(canonicalRoot, canonicalSeed);
+  if (relativeSeed === ".." || relativeSeed.startsWith(`..${sep}`) || isAbsolute(relativeSeed)) {
+    throw new Error(
+      `Refusing D1 seed: ${seedFile} does not resolve to a file owned by this project.`,
+    );
+  }
+  return seedFile;
+}
 
 export function parseD1List(source: string): D1DatabaseRecord[] {
   const parsed = parseJsonOutput(source, "wrangler d1 list --json");
@@ -92,7 +319,7 @@ export function migrationArgs(
       "development",
       "--local",
       "--persist-to",
-      join(project.root, ".wrangler", "state"),
+      getCanonicalLocalD1StatePath(project),
     );
   } else if (env === "preview") {
     args.push("--env", "preview", "--remote");
@@ -414,11 +641,57 @@ export async function commandDb(
       );
     }
     if (subcommand === "reset") {
-      throw new Error(
-        "D1 reset is deferred until it can preserve and restore the local state if migration replay fails. No files were deleted.",
+      if (getOption(subargs, "--env") !== "local") {
+        throw new Error(
+          "D1 reset requires an explicit `--env local`; remote or implicit reset targets are refused before filesystem changes.",
+        );
+      }
+      const localBinding = getAppD1Bindings(project).development;
+      const statePath = getCanonicalLocalD1StatePath(project);
+      const confirm = deps.confirm ?? defaultConfirm;
+      if (
+        !(await confirm(
+          `Reset local D1 database ${localBinding.databaseName} by replacing only ${statePath} and replaying migrations? This deletes local rows.`,
+        ))
+      ) {
+        output.log("Cancelled; no local D1 files were changed.");
+        return 1;
+      }
+      const result = await resetLocalD1State(project, () =>
+        applyD1Migrations(project, deps, "local"),
       );
+      output.log(`Reset local D1 database ${localBinding.databaseName} at ${result.statePath}.`);
+      if (result.retainedBackup) {
+        output.warn(
+          `Reset and migration replay succeeded, but the previous local state snapshot remains at ${result.retainedBackup}; remove it after review.`,
+        );
+      }
+      return 0;
     }
-    throw new Error("D1 seed data is not defined by this project. No database was changed.");
+    const seedFile = getLocalD1SeedFile(project);
+    const localBinding = getAppD1Bindings(project).development;
+    const statePath = getCanonicalLocalD1StatePath(project);
+    const seed = runTool(
+      deps,
+      "wrangler",
+      withConfig(project, [
+        "d1",
+        "execute",
+        localBinding.binding,
+        "--local",
+        "--env",
+        "development",
+        "--persist-to",
+        statePath,
+        "--file",
+        seedFile,
+      ]),
+      workerDirectory(project),
+    );
+    printCommandOutput(output, seed);
+    assertCommandSucceeded(seed, `Seed local D1 from ${seedFile}`);
+    output.log(`Seeded local D1 database ${localBinding.databaseName} from ${seedFile}.`);
+    return 0;
   }
   throw new Error("Usage: flare db <migrate|status|seed|reset> [--env local|preview|production].");
 }

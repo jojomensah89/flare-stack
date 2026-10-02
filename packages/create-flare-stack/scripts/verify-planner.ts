@@ -124,11 +124,20 @@ assert.deepEqual(workerD1.templateLayers, ["base", "worker/common", "db/d1", "wo
 const workerNeon = createProjectPlan(projectOptions(["--preset", "worker", "--db", "neon"]));
 assert.deepEqual(workerNeon.templateLayers, ["base", "worker/common", "db/neon", "worker/db-neon"]);
 
+const extension = createProjectPlan(projectOptions(["--preset", "extension"]));
+assert.deepEqual(extension.templateLayers, ["base", "extension/common"]);
+
 rejects(
   () => projectOptions(["--preset", "worker", "--auth"]),
   /does not support Better Auth session cookies/i,
 );
-rejects(() => projectOptions(["--preset", "unknown"]), /not available.*app, fullstack, worker/i);
+rejects(() => projectOptions(["--preset", "extension", "--auth"]), /does not support Better Auth/i);
+rejects(() => projectOptions(["--preset", "extension", "--db", "d1"]), /has no database/i);
+rejects(() => projectOptions(["--preset", "extension", "--db", "neon"]), /has no database/i);
+rejects(
+  () => projectOptions(["--preset", "unknown"]),
+  /not available.*app, fullstack, worker, extension/i,
+);
 rejects(() => projectOptions(["--auth"]), /requires a database/i);
 rejects(() => projectOptions(["--db", "postgres"]), /Choose none, d1, or neon/i);
 rejects(() => projectOptions(["--auth=false"]), /Choose none or better-auth/i);
@@ -169,7 +178,7 @@ try {
     new Response(cli.stderr).text(),
   ]);
   assert.equal(exitCode, 2, `${stdout}\n${stderr}`);
-  assert.match(stderr, /not available.*app, fullstack, worker/i);
+  assert.match(stderr, /not available.*app, fullstack, worker, extension/i);
   assert.equal(existsSync(unsupportedDestination), false);
 
   const packageDirectory = join(fixtureRoot, "flare-package");

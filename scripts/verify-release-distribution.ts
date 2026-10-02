@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { makeProjectOptions, parseArguments } from "../packages/create-flare-stack/src/args";
@@ -16,9 +16,28 @@ assert.ok(basename(resolvedRootTemp).startsWith("flare-release-dist-"));
 const args = process.argv.slice(2);
 const fullMode = args.includes("--full") || !args.includes("--quick");
 
+function assertExtensionBrowserPackages(projectDirectory: string): void {
+  const outputDirectory = join(projectDirectory, "apps", "extension", ".output");
+  const archives = readdirSync(outputDirectory).filter((filename) => filename.endsWith(".zip"));
+  for (const browser of ["chrome", "firefox", "edge"] as const) {
+    assert.ok(
+      archives.some((filename) => filename.endsWith(`-${browser}.zip`)),
+      `${browser} extension archive is missing from release fixture output: ${archives.join(", ")}`,
+    );
+    const manifestPath = join(outputDirectory, `${browser}-mv3`, "manifest.json");
+    assert.ok(existsSync(manifestPath), `${browser} Manifest V3 output must exist`);
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      manifest_version?: number;
+    };
+    assert.equal(manifest.manifest_version, 3, `${browser} output must use Manifest V3`);
+  }
+}
+
 console.log("==========================================================");
 console.log(`Verifying Flare Stack GitHub Release Distribution (v${FLARE_VERSION})`);
 console.log("==========================================================\n");
+
+let releaseServer: ReturnType<typeof Bun.serve> | undefined;
 
 try {
   const releaseDir = join(resolvedRootTemp, "release");
@@ -32,7 +51,7 @@ try {
   const flareBytes = readFileSync(release.flareArchive.path);
 
   console.log("2. Launching loopback HTTP release archive server...");
-  const server = Bun.serve({
+  releaseServer = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     fetch(req) {
@@ -57,7 +76,7 @@ try {
     },
   });
 
-  const baseUrl = `http://127.0.0.1:${server.port}`;
+  const baseUrl = `http://127.0.0.1:${releaseServer.port}`;
   const remoteGeneratorUrl = `${baseUrl}/${release.generatorArchive.name}`;
   const remoteFlareUrl = `${baseUrl}/${release.flareArchive.name}`;
 
@@ -123,6 +142,7 @@ try {
     { name: "test-auth", preset: "app", database: "d1", auth: "better-auth" },
     { name: "test-fullstack", preset: "fullstack", database: "d1", auth: "better-auth" },
     { name: "test-worker", preset: "worker", database: "d1", auth: "none" },
+    { name: "test-extension", preset: "extension", database: "none", auth: "none" },
   ] as const;
 
   for (const profile of profiles) {
@@ -144,8 +164,9 @@ try {
     const options = makeProjectOptions(parsed, resolvedRootTemp);
     const plan = createProjectPlan(options);
 
-    // Skip validation commands for rapid matrix validation, then validate full app for the complete profile
-    const isFullCandidate = fullMode && profile.name === "test-auth";
+    // Keep quick matrix profiles static; full mode exercises the app and extension install/build paths.
+    const isFullCandidate =
+      fullMode && (profile.name === "test-auth" || profile.name === "test-extension");
     await createProject(plan, { skipValidationCommands: !isFullCandidate });
 
     const manifestPath = join(projectDir, "package.json");
@@ -173,6 +194,37 @@ try {
         "apps/web must not exist in worker preset",
       );
     }
+    if (profile.preset === "extension") {
+      assert.ok(
+        existsSync(join(projectDir, "apps/extension/wxt.config.ts")),
+        "wxt.config.ts must exist in extension preset",
+      );
+      assert.ok(
+        existsSync(join(projectDir, "apps/extension/entrypoints/popup/App.tsx")),
+        "App.tsx must exist in extension popup",
+      );
+      assert.ok(
+        !existsSync(join(projectDir, "apps/web")),
+        "apps/web must not exist in extension preset",
+      );
+      assert.ok(
+        !existsSync(join(projectDir, "apps/server")),
+        "apps/server must not exist in extension preset",
+      );
+      if (isFullCandidate) {
+        const packageResult = await runAsync(
+          [process.execPath, "run", "package"],
+          projectDir,
+          300000,
+        );
+        assert.equal(
+          packageResult.exitCode,
+          0,
+          `Extension packaging failed:\n${packageResult.stdout}\n${packageResult.stderr}`,
+        );
+        assertExtensionBrowserPackages(projectDir);
+      }
+    }
     if (profile.database === "d1") {
       assert.ok(existsSync(join(projectDir, "packages/db")), "D1 packages/db must exist");
     }
@@ -183,15 +235,20 @@ try {
       );
     }
 
-    console.log(
-      `   ✓ Profile \`${profile.name}\` generated and verified (${isFullCandidate ? "full install/check/build" : "static verification"}).`,
-    );
+    const verification = isFullCandidate
+      ? profile.preset === "extension"
+        ? "full install/check/build/package"
+        : "full install/check/build"
+      : "static verification";
+    console.log(`   ✓ Profile \`${profile.name}\` generated and verified (${verification}).`);
   }
 
-  await server.stop(true);
+  await releaseServer.stop(true);
+  releaseServer = undefined;
   console.log("\n==========================================================");
   console.log("All GitHub Release Distribution verifications PASSED!");
   console.log("==========================================================");
 } finally {
+  if (releaseServer) await releaseServer.stop(true);
   rmSync(resolvedRootTemp, { recursive: true, force: true });
 }

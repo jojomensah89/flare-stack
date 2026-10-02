@@ -21,6 +21,30 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
   const output = options.output ?? console;
   const root = findProjectRoot(options.startDirectory ?? process.cwd());
   const project = await loadProject(root);
+
+  if (project.config.preset === "extension") {
+    const gitignoreProblems = validateGitignore(root);
+    if (gitignoreProblems.length > 0) {
+      throw new Error(`Local setup cannot proceed: ${gitignoreProblems.join(" ")}`);
+    }
+    output.log("Preparing the local extension workspace...");
+    const runner = options.runner ?? runManagedCommand;
+    if (existsSync(join(root, ".git"))) {
+      const lefthook = runner("bun", ["x", "--no-install", "lefthook", "install"], { cwd: root });
+      if (lefthook.status === 0) {
+        output.log("Git hooks are installed.");
+      } else {
+        output.warn(
+          "Git hooks were not installed. Run bun x lefthook install after dependencies are available.",
+        );
+      }
+    } else {
+      output.log("Git hooks were skipped because this directory has no .git entry.");
+    }
+    output.log("Setup complete. Run bun dev, bun check, bun run build, or bun package.");
+    return;
+  }
+
   requireApp(project, "bun setup");
 
   const gitignoreProblems = validateGitignore(root);

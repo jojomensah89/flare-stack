@@ -42,6 +42,16 @@ export async function loadProject(startDirectory: string): Promise<ProjectContex
     `${pathToFileURL(configFile).href}?flare_reload=${randomUUID()}`
   );
   const config = validateFlareConfig(configModule.default);
+  if (config.preset === "extension") {
+    return {
+      root,
+      config,
+      wranglerPath: "",
+      wranglerSource: "{}",
+      wranglerNode: parseJsonc("{}", "extension"),
+      wrangler: {},
+    };
+  }
   const wranglerPath =
     config.preset === "worker"
       ? join(root, "apps", "server", "wrangler.jsonc")
@@ -58,25 +68,27 @@ export async function loadProject(startDirectory: string): Promise<ProjectContex
 }
 
 export function requireApp(project: ProjectContext, command: string): void {
-  if (
-    project.config.preset !== "app" &&
-    project.config.preset !== "fullstack" &&
-    project.config.preset !== "worker"
-  ) {
+  const preset: string = project.config.preset;
+  if (preset === "extension") {
     throw new Error(
-      `${command} currently supports app, fullstack, and worker presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
+      `The extension preset is a client-side browser extension and does not support \`${command}\`. Run \`bun run build\` or \`bun package\` instead.`,
+    );
+  }
+  if (preset !== "app" && preset !== "fullstack" && preset !== "worker") {
+    throw new Error(
+      `${command} currently supports app, fullstack, and worker presets only. ${preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
     );
   }
 }
 
 export function requireSupportedAppDatabase(project: ProjectContext, command: string): void {
-  if (
-    project.config.preset !== "app" &&
-    project.config.preset !== "fullstack" &&
-    project.config.preset !== "worker"
-  ) {
+  const preset: string = project.config.preset;
+  if (preset === "extension") {
+    throw new Error(`The extension preset is a client-side browser extension and has no database.`);
+  }
+  if (preset !== "app" && preset !== "fullstack" && preset !== "worker") {
     throw new Error(
-      `${command} currently supports app, fullstack, and worker presets only. ${project.config.preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
+      `${command} currently supports app, fullstack, and worker presets only. ${preset} requires a topology-specific lifecycle that is not enabled in this CLI version.`,
     );
   }
 }

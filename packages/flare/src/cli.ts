@@ -52,6 +52,11 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
   }
 
   const project = await loadProject(root);
+  if (project.config.preset === "extension" && (command === "logs" || command === "tail")) {
+    throw new Error(
+      `The extension preset is a client-side browser extension and does not support \`flare ${command}\`. Run \`bun run build\` or \`bun run package\` instead.`,
+    );
+  }
   switch (command) {
     case "setup":
       if (args[0] !== "cloudflare") throw new Error("Usage: flare setup cloudflare.");

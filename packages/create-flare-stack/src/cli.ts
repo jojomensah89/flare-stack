@@ -13,14 +13,15 @@ Usage:
   bunx --bun --package ${release.generatorReleaseUrl} create-flare-stack <directory> [options]
 
 Supported in this release:
-  --preset app|fullstack
+  --preset app|fullstack|worker|extension
   --db none|d1|neon
   --auth                 Enable Better Auth (requires --db d1 or --db neon)
   --auth=none|better-auth
   --flare-package <path-or-url>
                          Use a local Flare package archive/directory or archive URL
 
-Extension and worker templates are not available in this release.
+The extension preset supports only --db none and --auth none.
+The worker preset does not support Better Auth.
 `;
 
 async function collectInteractiveChoices<
@@ -31,7 +32,9 @@ async function collectInteractiveChoices<
   try {
     if (!choices.preset) {
       choices.preset =
-        (await ask.question("Preset (app/fullstack) [app]: ")).trim().toLowerCase() || "app";
+        (await ask.question("Preset (app/fullstack/worker/extension) [app]: "))
+          .trim()
+          .toLowerCase() || "app";
     }
     if (!choices.database) {
       choices.database =
@@ -67,9 +70,15 @@ export async function runCli(args: string[]): Promise<number> {
     console.log("\nNext steps:");
     console.log(`  cd ${options.projectName}`);
     console.log("  bun dev");
-    console.log("  bun preview");
-    console.log("  bun deploy");
-    console.log("  flare setup cloudflare   # first-time Cloudflare resources and secrets");
+    if (options.preset === "extension") {
+      console.log("  bun run check");
+      console.log("  bun run build");
+      console.log("  bun run package   # Chrome, Firefox, and Edge archives");
+    } else {
+      console.log("  bun preview");
+      console.log("  bun deploy");
+      console.log("  flare setup cloudflare   # first-time Cloudflare resources and secrets");
+    }
     return 0;
   } catch (error) {
     if (error instanceof GenerationError) {

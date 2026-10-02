@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@repo/observability": "workspace:*",
-    "evlog": "1.0.8",
+    "evlog": "2.29.0",
     "hono": "4.13.12"
   },
   "devDependencies": {

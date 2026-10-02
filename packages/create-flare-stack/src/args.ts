@@ -114,10 +114,11 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
     parsed.preset &&
     parsed.preset.toLowerCase() !== "app" &&
     parsed.preset.toLowerCase() !== "fullstack" &&
-    parsed.preset.toLowerCase() !== "worker"
+    parsed.preset.toLowerCase() !== "worker" &&
+    parsed.preset.toLowerCase() !== "extension"
   ) {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker, extension.`,
     );
   }
   if (parsed.database) {
@@ -140,6 +141,23 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
   if (parsed.preset?.toLowerCase() === "worker" && parsed.auth?.toLowerCase() === "better-auth") {
     throw new UserInputError(
       "Worker preset does not support Better Auth session cookies; choose fullstack or app for web authentication.",
+    );
+  }
+  if (
+    parsed.preset?.toLowerCase() === "extension" &&
+    parsed.auth?.toLowerCase() === "better-auth"
+  ) {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and does not support Better Auth. Companion backends should use worker or fullstack.",
+    );
+  }
+  if (
+    parsed.preset?.toLowerCase() === "extension" &&
+    parsed.database &&
+    parsed.database.toLowerCase() !== "none"
+  ) {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and has no database. Re-run with `--db none`.",
     );
   }
   if (parsed.database?.toLowerCase() === "none" && parsed.auth?.toLowerCase() === "better-auth") {
@@ -232,9 +250,9 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   }
 
   const preset = (parsed.preset ?? "app").toLowerCase() as Preset;
-  if (preset !== "app" && preset !== "fullstack" && preset !== "worker") {
+  if (preset !== "app" && preset !== "fullstack" && preset !== "worker" && preset !== "extension") {
     throw new UserInputError(
-      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker.`,
+      `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker, extension.`,
     );
   }
 
@@ -254,6 +272,16 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   if (preset === "worker" && auth === "better-auth") {
     throw new UserInputError(
       "Worker preset does not support Better Auth session cookies; choose fullstack or app for web authentication.",
+    );
+  }
+  if (preset === "extension" && auth === "better-auth") {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and does not support Better Auth. Companion backends should use worker or fullstack.",
+    );
+  }
+  if (preset === "extension" && db !== "none") {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and has no database. Re-run with `--db none`.",
     );
   }
   if (auth === "better-auth" && db === "none") {

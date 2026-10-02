@@ -3,8 +3,13 @@ import { FLARE_VERSION, type ProjectOptions, type ProjectPlan, UserInputError } 
 import { makeReleaseMetadata } from "./release";
 
 export function createProjectPlan(options: ProjectOptions): ProjectPlan {
-  if (options.preset !== "app" && options.preset !== "fullstack" && options.preset !== "worker") {
-    throw new UserInputError("Supported presets: app, fullstack, worker.");
+  if (
+    options.preset !== "app" &&
+    options.preset !== "fullstack" &&
+    options.preset !== "worker" &&
+    options.preset !== "extension"
+  ) {
+    throw new UserInputError("Supported presets: app, fullstack, worker, extension.");
   }
   if (
     String(options.database) !== "none" &&
@@ -18,6 +23,16 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
       "Worker preset does not support Better Auth session cookies; choose fullstack or app for web authentication.",
     );
   }
+  if (options.preset === "extension" && options.auth !== "none") {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and does not support Better Auth. Companion backends should use worker or fullstack.",
+    );
+  }
+  if (options.preset === "extension" && options.database !== "none") {
+    throw new UserInputError(
+      "Extension preset is a client-side browser extension and has no database. Re-run with `--db none`.",
+    );
+  }
   if (options.auth === "better-auth" && options.database === "none") {
     throw new UserInputError(
       "Better Auth requires a database. Re-run with `--db d1 --auth` or `--db neon --auth`.",
@@ -27,6 +42,8 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
   const templateLayers = ["base"];
   if (options.preset === "worker") {
     templateLayers.push("worker/common");
+  } else if (options.preset === "extension") {
+    templateLayers.push("extension/common");
   } else {
     templateLayers.push("app");
     if (options.preset === "fullstack") {

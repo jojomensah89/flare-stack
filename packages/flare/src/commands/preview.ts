@@ -22,7 +22,12 @@ import {
 import { previewUrls, verifyAppHealth } from "./health";
 import { runtimeVars, validateRemoteHosts } from "./hosts";
 import { requireValidSecretsForPreview, verifyPreviewSecretsAfterDeploy } from "./secrets";
-import { getRequiredSecrets, requireSupportedAppDatabase, type ProjectContext } from "../project";
+import {
+  getRequiredSecrets,
+  requireApp,
+  requireSupportedAppDatabase,
+  type ProjectContext,
+} from "../project";
 import { assertCommandSucceeded } from "../runner";
 
 export async function commandPreview(
@@ -31,6 +36,7 @@ export async function commandPreview(
   args: string[],
 ): Promise<number> {
   expectOnlyFlags(args, ["--name", "--tag", "--message", "--url"]);
+  requireApp(project, "flare preview");
   requireSupportedAppDatabase(project, "flare preview");
   if (getEnv(deps).CLOUDFLARE_ENV !== undefined) {
     throw new Error(

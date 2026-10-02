@@ -18,9 +18,10 @@ import { applyD1Migrations, ensureRemoteD1, fetchD1Records, readMigrationState }
 import { commandDeploy } from "./deploy";
 import {
   callWhoAmI,
-  parseHostList,
+  hasCompleteHostOverrides,
   patchRuntimeHosts,
-  resolveHostInput,
+  resolveCloudflareAuthHosts,
+  validateHostOverrides,
   validateRemoteHosts,
   validateRuntimeVarParity,
 } from "./hosts";
@@ -58,40 +59,19 @@ export async function commandSetupCloudflare(
     );
   }
   const workerName = getWorkerName(project);
-  const productionHost = authEnabled
-    ? await resolveHostInput(
-        args,
-        "--public-host",
-        "Production AUTH_ALLOWED_HOSTS (exact hostnames, comma-separated): ",
-        deps,
-      )
+  if (authEnabled) validateHostOverrides(args, project, deps);
+  const whoAmIAccountId = callWhoAmI(
+    project,
+    deps,
+    authEnabled && !hasCompleteHostOverrides(args, deps),
+  );
+  const authHosts = authEnabled
+    ? await resolveCloudflareAuthHosts(args, project, deps, whoAmIAccountId)
     : undefined;
-  const previewHost = authEnabled
-    ? await resolveHostInput(
-        args,
-        "--preview-host",
-        `Preview host pattern or hostname (include *-${workerName}.<your-workers.dev-subdomain>.workers.dev for Worker Previews; replace the placeholder): `,
-        deps,
-        true,
-        workerName,
-      )
-    : undefined;
+  const productionHost = authHosts?.production;
+  const previewHost = authHosts?.preview;
 
   validateRuntimeVarParity(project);
-  if (productionHost && previewHost) {
-    const productionHosts = parseHostList(productionHost, "production AUTH_ALLOWED_HOSTS");
-    const previewHosts = parseHostList(previewHost, "preview AUTH_ALLOWED_HOSTS", {
-      workerPreviewPattern: true,
-      workerName,
-    });
-    if (productionHosts.some((host) => previewHosts.includes(host))) {
-      throw new Error(
-        "Production and Preview AUTH_ALLOWED_HOSTS must not contain the same exact hostname.",
-      );
-    }
-  }
-
-  callWhoAmI(project, deps);
   let production: D1DatabaseRecord | undefined;
   let preview: D1DatabaseRecord | undefined;
   let updatedConfig = project.wranglerSource;

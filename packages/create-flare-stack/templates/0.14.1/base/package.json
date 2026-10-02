@@ -36,5 +36,8 @@
     "turbo": "2.11.5",
     "typescript": "7.0.2"
   },
+  "overrides": {
+    "evlog": "2.29.0"
+  },
   "packageManager": "bun@1.4.2"
 }

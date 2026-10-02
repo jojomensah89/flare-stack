@@ -256,12 +256,37 @@ export async function validateMaterializedProject(
 
   if (plan.options.preset === "app") {
     await assertPathAbsent(root, "apps/server", "dedicated Hono server");
+    await assertPathAbsent(root, "apps/extension", "browser extension");
   } else if (plan.options.preset === "worker") {
     await assertPathAbsent(root, "apps/web", "web application");
+    await assertPathAbsent(root, "apps/extension", "browser extension");
     await assertPathPresent(root, "apps/server", "dedicated Hono server");
     await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
     await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
+  } else if (plan.options.preset === "extension") {
+    await assertPathAbsent(root, "apps/web", "web application");
+    await assertPathAbsent(root, "apps/server", "dedicated Hono server");
+    await assertPathAbsent(root, "packages/db", "database package");
+    await assertPathPresent(root, "apps/extension", "browser extension");
+    await assertPathPresent(root, "apps/extension/wxt.config.ts", "WXT config");
+    await assertPathPresent(
+      root,
+      "apps/extension/entrypoints/popup/App.tsx",
+      "Extension popup App",
+    );
+    await assertPathPresent(
+      root,
+      "apps/extension/entrypoints/popup/index.html",
+      "Extension popup HTML",
+    );
+    await assertPathPresent(
+      root,
+      "apps/extension/entrypoints/background.ts",
+      "Extension background service worker",
+    );
+    return;
   } else {
+    await assertPathAbsent(root, "apps/extension", "browser extension");
     await assertPathPresent(root, "apps/server", "dedicated Hono server");
     await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
     await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
@@ -604,7 +629,7 @@ export async function materializeProject(
     await rm(join(target, "packages", "db", "migrations"), { recursive: true, force: true });
   }
 
-  if (plan.options.preset === "worker") {
+  if (plan.options.preset === "worker" || plan.options.preset === "extension") {
     await rm(join(target, "apps", "web"), { recursive: true, force: true });
   }
 

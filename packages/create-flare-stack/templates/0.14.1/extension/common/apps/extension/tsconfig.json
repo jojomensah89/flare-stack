@@ -1,0 +1,13 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["wxt/browser"]
+  },
+  "include": ["entrypoints/**/*", "components/**/*", "lib/**/*", "wxt.config.ts", "*.d.ts"]
+}

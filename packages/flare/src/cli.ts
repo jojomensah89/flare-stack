@@ -17,6 +17,7 @@ import { commandPreview } from "./commands/preview";
 import { commandRollback } from "./commands/rollback";
 import { commandSecrets } from "./commands/secrets";
 import { commandSetupCloudflare } from "./commands/setup";
+import { commandUpgrade } from "./commands/upgrade";
 import { findProjectRoot, loadProject } from "./project";
 import { commandError } from "./runner";
 
@@ -30,7 +31,7 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
 
   if (!command || command === "--help" || command === "-h" || command === "help") {
     output.log(
-      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset>, logs, rollback, health <url>\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
+      "Flare Lifecycle CLI v0.14.1\nCommands: setup [cloudflare], preview, deploy, doctor, env check, secrets <list|push|generate>, db <status|migrate|seed|reset>, logs, rollback, health <url>, upgrade\nRemote commands target the app preset with no database or D1. Run local `bun setup` first. Cloudflare setup requires explicit production and Preview hosts when authentication is enabled.",
     );
     return 0;
   }
@@ -89,15 +90,16 @@ async function runCliInternal(argv: string[], deps: CliDependencies): Promise<nu
     }
     case "rollback":
       return commandRollback(project, deps, args);
+    case "upgrade":
+      return commandUpgrade(project, deps, args);
     case "deployments":
     case "resources":
-    case "upgrade":
       throw new Error(
         `flare ${command} is not implemented in this release; it will not report fabricated success.`,
       );
     default:
       output.log(
-        "Flare Lifecycle CLI v0.14.1\nCommands: setup, preview, deploy, doctor, env, secrets, db, logs, rollback, health",
+        "Flare Lifecycle CLI v0.14.1\nCommands: setup, preview, deploy, doctor, env, secrets, db, logs, rollback, health, upgrade",
       );
       return command ? 2 : 0;
   }

@@ -233,6 +233,8 @@ export function expectOnlyFlags(
     "--allow-destructive",
     "--remote",
     "--replace",
+    "--dry-run",
+    "--yes",
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];

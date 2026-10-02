@@ -1,3 +1,5 @@
+export const FLARE_VERSION = "0.14.1";
+
 export interface FlareConfig {
   schemaVersion: number;
   flareVersion: string;

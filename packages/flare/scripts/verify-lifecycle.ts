@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { runCli, type CliDependencies } from "../src/cli";
@@ -22,6 +22,7 @@ interface RecordedCall {
 interface FixtureOptions {
   database?: "none" | "d1" | "neon";
   requiredSecrets?: string[];
+  flareVersion?: string;
 }
 
 function success(stdout = ""): RunResult {
@@ -31,6 +32,7 @@ function success(stdout = ""): RunResult {
 function writeFixture(root: string, options: FixtureOptions = {}): void {
   const database = options.database ?? "none";
   const requiredSecrets = options.requiredSecrets ?? [];
+  const flareVersion = options.flareVersion ?? "0.14.1";
   const webDirectory = join(root, "apps", "web");
   mkdirSync(webDirectory, { recursive: true });
   mkdirSync(join(root, "scripts"), { recursive: true });
@@ -39,7 +41,7 @@ function writeFixture(root: string, options: FixtureOptions = {}): void {
     `export default ${JSON.stringify(
       {
         schemaVersion: 1,
-        flareVersion: "0.14.1",
+        flareVersion,
         productionBranch: "main",
         preset: "app",
         database,
@@ -155,6 +157,15 @@ function createRunner(
       }
       if (args[0] === "run" && typeof args[1] === "string" && args[1].endsWith("migrate.ts")) {
         return success("Neon migrations applied successfully.");
+      }
+      if (args[0] === "install") {
+        return success("Packages installed.");
+      }
+      if (
+        args[0] === "run" &&
+        (args[1] === "setup" || (typeof args[1] === "string" && args[1].endsWith("setup.ts")))
+      ) {
+        return success("Setup complete.");
       }
       throw new Error(`Unexpected fake Bun command: ${args.join(" ")}`);
     }
@@ -1020,6 +1031,133 @@ async function verifyExtensionLifecycle(): Promise<void> {
   });
 }
 
+async function verifyUpgradeLifecycle(): Promise<void> {
+  // Test already-up-to-date and argument validation
+  await withFixture({}, async (root) => {
+    const { runner, calls } = createRunner(root);
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const deps: CliDependencies = {
+      cwd: root,
+      runner,
+      output: {
+        log: (msg) => logs.push(String(msg)),
+        warn: (msg) => logs.push(String(msg)),
+        error: (msg) => errors.push(String(msg)),
+      },
+    };
+
+    // 1. Current version (0.14.1) — already up to date
+    let status = await runCli(["upgrade", "--env", "local"], deps);
+    assert.equal(status, 0);
+    assert.ok(logs.some((msg) => msg.includes("already on Flare Stack v0.14.1")));
+    assert.equal(calls.length, 0, "No commands run when already up to date");
+
+    // 2. Reject non-local --env
+    errors.length = 0;
+    status = await runCli(["upgrade", "--env", "production"], deps);
+    assert.equal(status, 1);
+    assert.ok(errors.some((msg) => msg.includes("--env must be 'local'")));
+  });
+
+  // Test upgrading an older version (0.14.0)
+  await withFixture({ flareVersion: "0.14.0" }, async (root) => {
+    const { runner, calls } = createRunner(root);
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const deps: CliDependencies = {
+      cwd: root,
+      runner,
+      output: {
+        log: (msg) => logs.push(String(msg)),
+        warn: (msg) => logs.push(String(msg)),
+        error: (msg) => errors.push(String(msg)),
+      },
+    };
+
+    const configPath = join(root, "flare.config.ts");
+    const packageJsonPath = join(root, "package.json");
+    writeFileSync(
+      packageJsonPath,
+      JSON.stringify(
+        {
+          name: "fixture",
+          devDependencies: {
+            flare:
+              "https://github.com/jojomensah89/flare-stack/releases/download/v0.14.0/flare-0.14.0.tgz",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    // 1. Dry-run
+    logs.length = 0;
+    let status = await runCli(["upgrade", "--dry-run"], deps);
+    assert.equal(status, 0);
+    assert.ok(
+      logs.some((msg) =>
+        msg.includes("[dry-run] Would upgrade Flare Stack from v0.14.0 to v0.14.1"),
+      ),
+    );
+    // Verify file was not modified
+    assert.ok(readFileSync(configPath, "utf8").includes('"0.14.0"'));
+
+    // 2. Cancelled confirmation
+    logs.length = 0;
+    status = await runCli(["upgrade"], { ...deps, confirm: async () => false });
+    assert.equal(status, 0);
+    assert.ok(logs.some((msg) => msg.includes("Upgrade cancelled.")));
+    assert.ok(readFileSync(configPath, "utf8").includes('"0.14.0"'));
+
+    // 3. Confirmed / --env local upgrade execution
+    logs.length = 0;
+    calls.length = 0;
+    status = await runCli(["upgrade", "--env", "local"], deps);
+    assert.equal(status, 0);
+    assert.ok(
+      logs.some((msg) => msg.includes("Successfully upgraded project to Flare Stack v0.14.1")),
+    );
+
+    // Verify flare.config.ts updated
+    const updatedConfig = readFileSync(configPath, "utf8");
+    assert.ok(updatedConfig.includes('"0.14.1"'));
+    assert.ok(!updatedConfig.includes('"0.14.0"'));
+
+    // Verify package.json updated
+    const updatedPkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+      devDependencies: { flare: string };
+    };
+    assert.equal(
+      updatedPkg.devDependencies.flare,
+      "https://github.com/jojomensah89/flare-stack/releases/download/v0.14.1/flare-0.14.1.tgz",
+    );
+
+    // Verify backup created in .flare
+    const dotFlare = join(root, ".flare");
+    assert.ok(existsSync(dotFlare));
+    const backups = readdirSync(dotFlare).filter((f) => f.startsWith("upgrade-backup-"));
+    assert.equal(backups.length, 1);
+    const backupDir = join(dotFlare, backups[0]!);
+    assert.ok(existsSync(join(backupDir, "flare.config.ts")));
+    assert.ok(readFileSync(join(backupDir, "flare.config.ts"), "utf8").includes('"0.14.0"'));
+    assert.ok(existsSync(join(backupDir, "package.json")));
+
+    // Verify bun install and setup were called
+    assert.ok(calls.some((c) => c.command === "bun" && c.args[0] === "install"));
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.command === "bun" &&
+          c.args[0] === "run" &&
+          (c.args[1] === "setup" || c.args[1]?.endsWith("setup.ts")),
+      ),
+    );
+  });
+}
+
 async function main(): Promise<void> {
   verifyJsonc();
   await verifyPublicLocalSetup();
@@ -1033,6 +1171,7 @@ async function main(): Promise<void> {
   await verifyStandaloneWorkerLifecycle();
   await verifyExtensionLifecycle();
   await verifyNeonLifecycle();
+  await verifyUpgradeLifecycle();
   assert.equal(
     await runCli(["--help"], {
       cwd: tmpdir(),
@@ -1041,7 +1180,7 @@ async function main(): Promise<void> {
     0,
   );
   console.log(
-    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, standalone worker lifecycle, and help. No remote operation was performed.",
+    "Flare lifecycle fixtures passed: JSONC, setup, no-database lifecycle, built-config redirects, isolated remote-preview migration arguments, fail-closed status/branch guards, secret commands/bootstrap, exact hosts, fullstack multi-worker orchestration, standalone worker lifecycle, upgrade lifecycle, and help. No remote operation was performed.",
   );
 }
 

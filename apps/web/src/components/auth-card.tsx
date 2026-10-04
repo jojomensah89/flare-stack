@@ -17,6 +17,7 @@ import {
   LogOut,
   ShieldCheck,
   UserPlus,
+  Loader2,
 } from "lucide-react";
 import * as React from "react";
 import { signIn, signOut, signUp, useSession } from "../lib/auth-client";
@@ -29,7 +30,7 @@ interface AuthFeedbackProps {
 function AuthFeedback({ error, success }: AuthFeedbackProps) {
   if (error) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+      <div className="flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive animate-in fade-in-0 slide-in-from-top-2 duration-150">
         <AlertCircle className="h-4 w-4 shrink-0" />
         <span>{error}</span>
       </div>
@@ -37,7 +38,7 @@ function AuthFeedback({ error, success }: AuthFeedbackProps) {
   }
   if (success) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+      <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary animate-in fade-in-0 slide-in-from-top-2 duration-150">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         <span>{success}</span>
       </div>
@@ -67,8 +68,8 @@ function ActiveSessionView({ session, submitting, onSignOut }: ActiveSessionView
     : "Active";
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted/30 p-4">
+    <div className="space-y-4 animate-in fade-in-0 duration-150">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 transition-colors hover:bg-muted/40">
         <h4 className="text-sm font-semibold mb-2">Active Session Details</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           <div>
@@ -92,8 +93,17 @@ function ActiveSessionView({ session, submitting, onSignOut }: ActiveSessionView
 
       <Button variant="destructive" onClick={onSignOut} disabled={submitting} className="w-full">
         <span className="flex items-center justify-center gap-2">
-          <LogOut className="h-4 w-4" />
-          {submitting ? "Signing out..." : "Sign Out"}
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Signing out...</span>
+            </>
+          ) : (
+            <>
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </>
+          )}
         </span>
       </Button>
     </div>
@@ -136,10 +146,10 @@ function AuthFormView({
             setMode("signin");
             onClearErrors();
           }}
-          className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-all ${
+          className={`flex-1 rounded-md py-1.5 text-xs font-medium cursor-pointer transition-all duration-150 ease-out select-none active:scale-95 ${
             mode === "signin"
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-xs font-semibold"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/40"
           }`}
         >
           Sign In
@@ -150,10 +160,10 @@ function AuthFormView({
             setMode("signup");
             onClearErrors();
           }}
-          className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-all ${
+          className={`flex-1 rounded-md py-1.5 text-xs font-medium cursor-pointer transition-all duration-150 ease-out select-none active:scale-95 ${
             mode === "signup"
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-xs font-semibold"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/40"
           }`}
         >
           Sign Up
@@ -161,7 +171,7 @@ function AuthFormView({
       </div>
 
       {mode === "signup" && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 animate-in fade-in-0 slide-in-from-top-2 duration-150">
           <Label htmlFor="auth-name">Full Name</Label>
           <Input
             id="auth-name"
@@ -204,15 +214,20 @@ function AuthFormView({
 
       <Button type="submit" disabled={submitting} className="w-full">
         <span className="flex items-center justify-center gap-2">
-          {mode === "signup" ? (
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{mode === "signup" ? "Creating account..." : "Signing in..."}</span>
+            </>
+          ) : mode === "signup" ? (
             <>
               <UserPlus className="h-4 w-4" />
-              {submitting ? "Creating account..." : "Create Account"}
+              <span>Create Account</span>
             </>
           ) : (
             <>
               <LogIn className="h-4 w-4" />
-              {submitting ? "Signing in..." : "Sign In"}
+              <span>Sign In</span>
             </>
           )}
         </span>
@@ -292,7 +307,7 @@ export function AuthCard() {
             <CardTitle>Authentication (Better Auth + D1)</CardTitle>
           </div>
           {session?.user && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary animate-in fade-in-0 zoom-in-95 duration-150">
               <ShieldCheck className="h-3.5 w-3.5" />
               Authenticated
             </span>

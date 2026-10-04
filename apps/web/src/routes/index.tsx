@@ -36,12 +36,12 @@ function IndexPage() {
 
   const fetchClientRpc = React.useCallback(async () => {
     setSbLoading(true);
+    setSbStatus("Client RPC (/api/items)");
     try {
       const res = await apiClient.api.items.$get();
       if (res.ok) {
         const data = await res.json();
         setSbItems(data.items);
-        setSbStatus("Client RPC (/api/items)");
       }
     } catch (err) {
       console.error("Failed to fetch backend items via client RPC", err);
@@ -53,11 +53,11 @@ function IndexPage() {
 
   const fetchServerFn = React.useCallback(async () => {
     setSbLoading(true);
+    setSbStatus("Server Fn (Service Binding RPC)");
     try {
       const res = await getServerBackendItems();
       if (res.ok && res.items) {
         setSbItems(res.items);
-        setSbStatus("Server Fn (Service Binding RPC)");
       }
     } catch (err) {
       console.error("Failed to fetch backend items via server fn", err);
@@ -94,13 +94,29 @@ function IndexPage() {
   }, []);
 
   const handleInsertDbItem = React.useCallback(async () => {
-    if (!newItemName.trim()) return;
+    const name = newItemName.trim();
+    if (!name) return;
+
+    // Optimistic UI update: instantly render row before server round-trip completes
+    const tempId = `optimistic-${Date.now()}`;
+    const optimisticItem: DbItem = {
+      id: tempId,
+      name,
+      createdAt: new Date(),
+    };
+
+    setDbItems((prev) => [optimisticItem, ...prev]);
+    setNewItemName("");
+    setDbLoading(true);
+
     try {
-      await addDbItem({ data: newItemName.trim() });
-      setNewItemName("");
+      await addDbItem({ data: name });
       await fetchDbItems();
-    } catch {
-      console.error("Failed to insert reference item");
+    } catch (err) {
+      console.error("Failed to insert reference item", err);
+      // Revert optimistic item on failure
+      setDbItems((prev) => prev.filter((item) => item.id !== tempId));
+      setDbLoading(false);
     }
   }, [newItemName, fetchDbItems]);
 

@@ -30,6 +30,7 @@ import {
   Flame,
   Info,
   Layers,
+  Loader2,
   Network,
   Server,
   Terminal,
@@ -169,7 +170,14 @@ export function ServerStatusCard({ serverState, loading, onRefresh }: ServerStat
 
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={onRefresh} disabled={loading}>
-              Execute Server Function
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Executing...</span>
+                </>
+              ) : (
+                "Execute Server Function"
+              )}
             </Button>
             <Dialog>
               <DialogTrigger>
@@ -308,9 +316,21 @@ export function D1PersistenceCard({
                 placeholder="Item name..."
                 value={newItemName}
                 onChange={(e) => onNewItemNameChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newItemName.trim() && !loading) {
+                    onInsert();
+                  }
+                }}
               />
-              <Button size="sm" onClick={onInsert} disabled={loading}>
-                Insert
+              <Button size="sm" onClick={onInsert} disabled={loading || !newItemName.trim()}>
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Inserting...</span>
+                  </>
+                ) : (
+                  "Insert"
+                )}
               </Button>
               <Button variant="secondary" size="sm" onClick={onRefresh} disabled={loading}>
                 Refresh
@@ -325,10 +345,13 @@ export function D1PersistenceCard({
             </div>
             {items.length > 0 ? (
               <div className="space-y-1 pt-2">
-                {items.slice(0, 3).map((item) => (
-                  <div key={item.id} className="flex justify-between text-muted-foreground">
+                {items.slice(0, 5).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex justify-between items-center rounded px-2 py-1 -mx-2 text-muted-foreground transition-colors hover:bg-muted/70 animate-in fade-in-0 duration-150"
+                  >
                     <span className="truncate">{item.name}</span>
-                    <span className="font-mono text-xs">
+                    <span className="font-mono text-xs shrink-0">
                       {new Date(item.createdAt).toISOString().slice(11, 19)} UTC
                     </span>
                   </div>
@@ -384,10 +407,24 @@ export function ServiceBindingCard({
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={onFetchClientRpc} disabled={loading}>
-              Client RPC (/api/items)
+              {loading && status?.includes("Client RPC") ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Calling RPC...</span>
+                </>
+              ) : (
+                "Client RPC (/api/items)"
+              )}
             </Button>
             <Button variant="secondary" size="sm" onClick={onFetchServerFn} disabled={loading}>
-              Server Fn (Service Binding)
+              {loading && status?.includes("Server Fn") ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Calling Service Binding...</span>
+                </>
+              ) : (
+                "Server Fn (Service Binding)"
+              )}
             </Button>
           </div>
 
@@ -403,9 +440,12 @@ export function ServiceBindingCard({
             {items.length > 0 ? (
               <div className="space-y-1 pt-2">
                 {items.map((item) => (
-                  <div key={item.id} className="flex justify-between text-muted-foreground">
+                  <div
+                    key={item.id}
+                    className="flex justify-between items-center rounded px-2 py-1 -mx-2 text-muted-foreground transition-colors hover:bg-muted/70 animate-in fade-in-0 duration-150"
+                  >
                     <span className="truncate">{item.name}</span>
-                    <span className="font-mono text-xs text-primary">{item.id}</span>
+                    <span className="font-mono text-xs text-primary shrink-0">{item.id}</span>
                   </div>
                 ))}
               </div>

@@ -1,37 +1,56 @@
-import { Menu as MenuPrimitive } from "@base-ui-components/react/menu";
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import * as React from "react";
 import { cn } from "../lib/utils";
 
-export function DropdownMenu({ children }: { children: React.ReactNode }) {
-  return <MenuPrimitive.Root>{children}</MenuPrimitive.Root>;
+export type DropdownMenuProps = React.ComponentProps<typeof MenuPrimitive.Root>;
+
+export function DropdownMenu(props: DropdownMenuProps) {
+  return <MenuPrimitive.Root {...props} />;
 }
 
-export function DropdownMenuTrigger({
-  children,
-  className,
-}: {
-  children: React.ReactElement<React.HTMLAttributes<HTMLElement>>;
-  className?: string;
-}) {
+type TriggerProps = Omit<React.ComponentProps<typeof MenuPrimitive.Trigger>, "render"> & {
+  children: React.ReactElement;
+};
+
+export function DropdownMenuTrigger({ children, className, ...props }: TriggerProps) {
+  const childClassName = React.isValidElement<{ className?: string }>(children)
+    ? children.props.className
+    : undefined;
+
   return (
     <MenuPrimitive.Trigger
-      render={children as React.ReactElement<Record<string, unknown>>}
-      className={cn(children.props.className, className)}
+      {...props}
+      data-slot="dropdown-menu-trigger"
+      render={children}
+      className={cn(childClassName, className)}
     />
   );
 }
 
+export type DropdownMenuContentProps = React.ComponentProps<typeof MenuPrimitive.Popup> & {
+  portalProps?: React.ComponentProps<typeof MenuPrimitive.Portal>;
+  positionerProps?: Omit<React.ComponentProps<typeof MenuPrimitive.Positioner>, "children">;
+};
+
 export function DropdownMenuContent({
   children,
   className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  portalProps,
+  positionerProps,
+  ...props
+}: DropdownMenuContentProps) {
   return (
-    <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
+    <MenuPrimitive.Portal {...portalProps}>
+      <MenuPrimitive.Positioner
+        side="bottom"
+        align="end"
+        sideOffset={8}
+        {...positionerProps}
+        className={cn("z-50", positionerProps?.className)}
+      >
         <MenuPrimitive.Popup
+          {...props}
+          data-slot="dropdown-menu-content"
           className={cn(
             "w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95",
             className,
@@ -44,20 +63,15 @@ export function DropdownMenuContent({
   );
 }
 
-export function DropdownMenuItem({
-  children,
-  className,
-  onClick,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  onClick?: () => void;
-}) {
+export type DropdownMenuItemProps = React.ComponentProps<typeof MenuPrimitive.Item>;
+
+export function DropdownMenuItem({ children, className, ...props }: DropdownMenuItemProps) {
   return (
     <MenuPrimitive.Item
-      onClick={onClick}
+      {...props}
+      data-slot="dropdown-menu-item"
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
     >

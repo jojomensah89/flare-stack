@@ -6,11 +6,14 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
+  "secrets": { "required": [] },
   "vars": {
     "FLARE_ENVIRONMENT": "production",
   },
   "env": {
     "development": {
+      "name": "{{PROJECT_NAME}}-server",
+      "secrets": { "required": [] },
       "vars": {
         "FLARE_ENVIRONMENT": "development",
       },
@@ -19,6 +22,7 @@
       "name": "{{PROJECT_NAME}}-server-preview",
       "workers_dev": false,
       "preview_urls": false,
+      "secrets": { "required": [] },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
       },

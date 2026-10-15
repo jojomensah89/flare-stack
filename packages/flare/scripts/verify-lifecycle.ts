@@ -129,7 +129,12 @@ async function withFixture<T>(
 
 function createRunner(
   root: string,
-  options: { redirect?: string; builtWorkerName?: string; neonPending?: string[] } = {},
+  options: {
+    redirect?: string;
+    builtWorkerName?: string;
+    invalidWebServerBinding?: boolean;
+    neonPending?: string[];
+  } = {},
 ): { runner: CommandRunner; calls: RecordedCall[] } {
   const calls: RecordedCall[] = [];
   const runner: CommandRunner = (command, args, runOptions) => {
@@ -142,6 +147,25 @@ function createRunner(
         const outputDirectory = join(webDirectory, "dist");
         mkdirSync(deployDirectory, { recursive: true });
         mkdirSync(outputDirectory, { recursive: true });
+        const serverConfigPath = join(root, "apps", "server", "wrangler.jsonc");
+        const serverConfig = existsSync(serverConfigPath)
+          ? (JSON.parse(readFileSync(serverConfigPath, "utf8")) as {
+              name: string;
+              env?: { preview?: { name?: string } };
+            })
+          : undefined;
+        const builtServerName = serverConfig
+          ? runOptions.env?.CLOUDFLARE_ENV === "preview"
+            ? (serverConfig.env?.preview?.name ?? `${serverConfig.name}-preview`)
+            : serverConfig.name
+          : undefined;
+        if (builtServerName) {
+          mkdirSync(join(outputDirectory, "auxiliary"), { recursive: true });
+          writeFileSync(
+            join(outputDirectory, "auxiliary", "wrangler.json"),
+            JSON.stringify({ name: builtServerName }),
+          );
+        }
         writeFileSync(
           join(deployDirectory, "config.json"),
           JSON.stringify({ configPath: options.redirect ?? "../../dist/worker.json" }),
@@ -149,7 +173,27 @@ function createRunner(
         );
         writeFileSync(
           join(outputDirectory, "worker.json"),
-          JSON.stringify({ name: options.builtWorkerName ?? fixtureWorker }),
+          JSON.stringify({
+            ...(builtServerName
+              ? {
+                  services: [
+                    {
+                      binding: "SERVER",
+                      service: options.invalidWebServerBinding
+                        ? runOptions.env?.CLOUDFLARE_ENV === "preview"
+                          ? serverConfig?.name
+                          : (serverConfig?.env?.preview?.name ?? `${serverConfig?.name}-preview`)
+                        : builtServerName,
+                    },
+                  ],
+                }
+              : {}),
+            name:
+              options.builtWorkerName ??
+              (runOptions.env?.CLOUDFLARE_ENV === "preview"
+                ? `${fixtureWorker}-preview`
+                : fixtureWorker),
+          }),
           "utf8",
         );
         return success();
@@ -711,17 +755,17 @@ async function verifyFullstackDeployment(): Promise<void> {
       (call) =>
         call.command === "wrangler" &&
         call.cwd === serverDir &&
-        call.args[0] === "versions" &&
-        call.args[1] === "upload",
+        call.args[0] === "deploy" &&
+        call.args.some((arg) => arg.includes("auxiliary")),
     );
     const webPreview = calls.find(
       (call) =>
         call.command === "wrangler" &&
         call.cwd === join(root, "apps", "web") &&
-        call.args[0] === "preview",
+        call.args[0] === "deploy",
     );
-    assert.ok(serverPreview, "Must upload preview version for apps/server");
-    assert.ok(webPreview, "Must deploy preview Worker for apps/web");
+    assert.ok(serverPreview, "Must deploy the isolated persistent preview server");
+    assert.ok(webPreview, "Must deploy the built persistent preview web Worker");
     assert.ok(
       calls.indexOf(serverPreview) < calls.indexOf(webPreview),
       "Server preview version must be uploaded before web preview",
@@ -768,6 +812,31 @@ async function verifyFullstackDeployment(): Promise<void> {
       healthChecks.includes("/api/health"),
       "Rollback health check must verify /api/health for fullstack",
     );
+
+    const { runner: invalidRunner, calls: invalidCalls } = createRunner(root, {
+      invalidWebServerBinding: true,
+    });
+    const invalidErrors: string[] = [];
+    const invalidDeps = createDependencies(root, invalidRunner, invalidErrors);
+    assert.equal(await runCli(["deploy", "--cloudflare-only"], invalidDeps), 1);
+    assert.ok(invalidErrors.some((error) => error.includes("must bind SERVER")));
+    assert.equal(
+      invalidCalls.filter((call) => call.command === "wrangler" && call.args[0] === "deploy")
+        .length,
+      0,
+      "An invalid production web artifact must fail before either Worker deploys",
+    );
+
+    invalidCalls.length = 0;
+    invalidErrors.length = 0;
+    assert.equal(await runCli(["preview"], invalidDeps), 1);
+    assert.ok(invalidErrors.some((error) => error.includes("must bind SERVER")));
+    assert.equal(
+      invalidCalls.filter((call) => call.command === "wrangler" && call.args[0] === "deploy")
+        .length,
+      0,
+      "An invalid preview web artifact must fail before either Worker deploys",
+    );
   });
 }
 
@@ -794,7 +863,7 @@ async function verifyNeonLifecycle(): Promise<void> {
     assert.ok(
       errors.some((error) =>
         error.includes(
-          "Neon local migration operations require DATABASE_URL in apps/web/.dev.vars or environment",
+          `Neon local migration operations require DATABASE_URL in ${join(root, "apps", "web")}`,
         ),
       ),
     );

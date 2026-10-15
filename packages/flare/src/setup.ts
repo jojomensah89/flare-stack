@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { initializeLocalSecrets, validateGitignore } from "./env";
 import {
   findProjectRoot,
   getAppD1Bindings,
+  getResourceProject,
   getRequiredSecrets,
   loadProject,
   requireApp,
@@ -53,9 +54,9 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
   }
 
   output.log("Preparing the local app workspace...");
-  const targetDirectory =
-    project.config.preset === "worker" ? join(root, "apps", "server") : join(root, "apps", "web");
-  const targetLabel = project.config.preset === "worker" ? "apps/server" : "apps/web";
+  const resourceProject = getResourceProject(project);
+  const targetDirectory = dirname(resourceProject.wranglerPath);
+  const targetLabel = relative(root, targetDirectory);
   if (project.config.database === "d1") {
     getAppD1Bindings(project);
     const stateDirectory = join(root, ".wrangler", "state");
@@ -110,19 +111,23 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<vo
     output.log("Git hooks were skipped because this directory has no .git entry.");
   }
 
-  const types = runner(
-    "wrangler",
-    ["types", "--include-runtime=false", "--config", project.wranglerPath],
-    {
-      cwd: targetDirectory,
-    },
-  );
-  if (types.stdout.trim()) output.log(types.stdout.trimEnd());
-  if (types.stderr.trim()) output.error(types.stderr.trimEnd());
-  if (types.status !== 0) {
-    throw new Error(
-      "Wrangler binding types could not be generated. Check the error above, then rerun bun setup.",
+  for (const target of project.config.preset === "fullstack"
+    ? [project, resourceProject]
+    : [project]) {
+    const types = runner(
+      "wrangler",
+      ["types", "--include-runtime=false", "--config", target.wranglerPath],
+      {
+        cwd: dirname(target.wranglerPath),
+      },
     );
+    if (types.stdout.trim()) output.log(types.stdout.trimEnd());
+    if (types.stderr.trim()) output.error(types.stderr.trimEnd());
+    if (types.status !== 0) {
+      throw new Error(
+        "Wrangler binding types could not be generated. Check the error above, then rerun bun setup.",
+      );
+    }
   }
   output.log("Cloudflare binding types are current.");
   output.log("Setup complete. Run bun dev, bun check, bun run build, bun preview, or bun deploy.");

@@ -15,7 +15,12 @@ import { readMigrationState, readNeonMigrationState } from "./db";
 import { callWhoAmI, validateRemoteHosts } from "./hosts";
 import { missingSecretNames, remoteSecretNames } from "./secrets";
 import { readSecretFile, validateGitignore } from "../env";
-import { getAppD1Bindings, getRequiredSecrets, type ProjectContext } from "../project";
+import {
+  getAppD1Bindings,
+  getResourceProject,
+  getRequiredSecrets,
+  type ProjectContext,
+} from "../project";
 
 export async function commandDoctor(
   project: ProjectContext,
@@ -29,6 +34,7 @@ export async function commandDoctor(
     );
   }
   const output = getOutput(deps);
+  const resourceProject = getResourceProject(project);
   const problems: string[] = [];
   const check = (name: string, ok: boolean, fix?: string) => {
     output[ok ? "log" : "error"](`${ok ? "✓" : "✗"} ${name}${!ok && fix ? ` — ${fix}` : ""}`);
@@ -70,7 +76,9 @@ export async function commandDoctor(
   );
 
   const isSupportedPreset =
-    project.config.preset === "app" || project.config.preset === "fullstack";
+    project.config.preset === "app" ||
+    project.config.preset === "fullstack" ||
+    project.config.preset === "worker";
   if (isSupportedPreset && project.config.database === "d1") {
     try {
       getAppD1Bindings(project);
@@ -100,7 +108,7 @@ export async function commandDoctor(
 
   const required = getRequiredSecrets(project);
   if (required.length > 0) {
-    const local = readSecretFile(join(project.root, "apps", "web", ".dev.vars"), required);
+    const local = readSecretFile(join(workerDirectory(resourceProject), ".dev.vars"), required);
     check(
       "Required local secret names and values",
       local.missing.length === 0,
@@ -115,18 +123,22 @@ export async function commandDoctor(
     }
   }
 
-  const typesResult = runTool(
-    deps,
-    "wrangler",
-    withConfig(project, ["types", "--check", "--include-runtime=false"]),
-    workerDirectory(project),
-    { env: clearCloudflareEnvironment(deps) },
-  );
-  check(
-    "Generated development binding types are current",
-    typesResult.status === 0,
-    "Run bun setup to regenerate Wrangler types.",
-  );
+  for (const target of project.config.preset === "fullstack"
+    ? [project, resourceProject]
+    : [project]) {
+    const typesResult = runTool(
+      deps,
+      "wrangler",
+      withConfig(target, ["types", "--check", "--include-runtime=false"]),
+      workerDirectory(target),
+      { env: clearCloudflareEnvironment(deps) },
+    );
+    check(
+      "Generated development binding types are current",
+      typesResult.status === 0,
+      "Run bun setup to regenerate Wrangler types.",
+    );
+  }
 
   if (hasOption(args, "--remote")) {
     try {

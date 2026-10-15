@@ -3,6 +3,8 @@
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": ["@shadcn/lint"],
   "ignorePatterns": [
+    ".agents/skills/**",
+    ".taste-skill/**",
     "packages/create-flare-stack/templates/**",
     "**/routeTree.gen.ts",
     "**/worker-configuration.d.ts",
@@ -27,7 +29,11 @@
   },
   "overrides": [
     {
-      "files": ["apps/web/**/*.{js,jsx,ts,tsx}", "packages/ui/**/*.{js,jsx,ts,tsx}"],
+      "files": [
+        "apps/web/**/*.{js,jsx,ts,tsx}",
+        "apps/site/**/*.{js,jsx,ts,tsx}",
+        "packages/ui/**/*.{js,jsx,ts,tsx}"
+      ],
       "rules": {
         "shadcn/no-raw-colors": "error",
         "shadcn/no-arbitrary-values": "error",

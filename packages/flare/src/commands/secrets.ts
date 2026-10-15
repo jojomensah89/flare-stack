@@ -25,6 +25,7 @@ import {
   writeGeneratedSecret,
 } from "../env";
 import {
+  getResourceProject,
   getRequiredSecrets,
   getWorkerName,
   requireSupportedAppDatabase,
@@ -81,19 +82,29 @@ export function runSecretBulk(
   values: Record<string, string>,
   previewName?: string,
 ): RunResult {
+  project = getResourceProject(project);
   const workerName = getWorkerName(project);
   const args =
     environment === "production"
       ? withConfig(project, ["secret", "bulk", "--name", workerName])
-      : withConfig(project, [
-          "preview",
-          "base-config",
-          "secret",
-          "bulk",
-          "--worker-name",
-          workerName,
-          ...(previewName ? ["--name", previewName] : []),
-        ]);
+      : project.config.preset === "fullstack"
+        ? withConfig(project, [
+            "secret",
+            "bulk",
+            "--env",
+            "preview",
+            "--name",
+            getWorkerName(project, "preview"),
+          ])
+        : withConfig(project, [
+            "preview",
+            "base-config",
+            "secret",
+            "bulk",
+            "--worker-name",
+            workerName,
+            ...(previewName ? ["--name", previewName] : []),
+          ]);
   return runTool(deps, "wrangler", args, workerDirectory(project), {
     input: serializeSecretValues(values),
   });
@@ -105,19 +116,31 @@ export function remoteSecretNames(
   environment: "production" | "preview",
   allowNewWorker = false,
 ): string[] {
+  project = getResourceProject(project);
   const workerName = getWorkerName(project);
   const args =
     environment === "production"
       ? withConfig(project, ["secret", "list", "--format", "json", "--name", workerName])
-      : withConfig(project, [
-          "preview",
-          "base-config",
-          "secret",
-          "list",
-          "--json",
-          "--worker-name",
-          workerName,
-        ]);
+      : project.config.preset === "fullstack"
+        ? withConfig(project, [
+            "secret",
+            "list",
+            "--format",
+            "json",
+            "--env",
+            "preview",
+            "--name",
+            getWorkerName(project, "preview"),
+          ])
+        : withConfig(project, [
+            "preview",
+            "base-config",
+            "secret",
+            "list",
+            "--json",
+            "--worker-name",
+            workerName,
+          ]);
   const result = runTool(deps, "wrangler", args, workerDirectory(project));
   if (result.status !== 0) {
     // Wrangler converts API 10007 to this specific UserError, omitting the code.
@@ -279,6 +302,7 @@ export async function commandSecrets(
   subcommand: string | undefined,
   args: string[],
 ): Promise<number> {
+  project = getResourceProject(project);
   const output = getOutput(deps);
   const environment = parseSecretEnvironment(args);
   requireSupportedAppDatabase(project, `flare secrets ${subcommand ?? ""}`);
@@ -288,7 +312,7 @@ export async function commandSecrets(
   if (subcommand === "list") {
     expectOnlyFlags(args, ["--env"]);
     if (environment === "local") {
-      const file = join(project.root, "apps", "web", ".dev.vars");
+      const file = join(workerDirectory(project), ".dev.vars");
       const local = readSecretFile(file, required);
       reportSecretNames(output, "Local", [
         ...required.filter((name) => !local.missing.includes(name)),
@@ -320,7 +344,7 @@ export async function commandSecrets(
     }
     let values: Record<string, string>;
     if (environment === "preview") {
-      const file = join(project.root, "apps", "web", ".preview.vars");
+      const file = join(workerDirectory(project), ".preview.vars");
       const parsed = readSecretFile(file, required);
       if (parsed.extra.length > 0) {
         throw new Error(`${file} contains undeclared secret name(s): ${parsed.extra.join(", ")}.`);
@@ -390,9 +414,7 @@ export async function commandSecrets(
       );
     } else {
       const file = join(
-        project.root,
-        "apps",
-        "web",
+        workerDirectory(project),
         environment === "local" ? ".dev.vars" : ".preview.vars",
       );
       writeGeneratedSecret(file, name, value);

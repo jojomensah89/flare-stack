@@ -7,6 +7,49 @@ import { makeProjectOptions, parseArguments } from "../src/args";
 import { FLARE_VERSION, UserInputError } from "../src/model";
 import { createProjectPlan } from "../src/plan";
 import { resolveBunExecutable } from "../src/workflow";
+import {
+  PRESET_CATALOG,
+  VERIFIED_V0141_RELEASE_MANIFEST,
+  buildScaffoldCommand,
+  normalizeSelection,
+} from "../src/catalog";
+
+assert.equal(PRESET_CATALOG.length, 19);
+assert.equal(new Set(PRESET_CATALOG.map((entry) => entry.id)).size, 19);
+for (const entry of PRESET_CATALOG) {
+  const command = buildScaffoldCommand(entry.selection, "my-app", { mode: "local" });
+  assert.equal(command.available, true);
+  assert.ok(command.command?.endsWith("--flare-package ./packages/flare"));
+}
+assert.equal(
+  PRESET_CATALOG.filter(
+    (entry) =>
+      buildScaffoldCommand(entry.selection, "my-app", {
+        mode: "release",
+        manifest: VERIFIED_V0141_RELEASE_MANIFEST,
+      }).available,
+  ).length,
+  3,
+);
+for (const name of ["bad;name", "bad name", "../bad", "CON", "app$(whoami)", "a".repeat(59)]) {
+  assert.equal(buildScaffoldCommand({ preset: "app" }, name, { mode: "local" }).available, false);
+}
+assert.equal(
+  buildScaffoldCommand({ preset: "fullstack", frontend: "router" }, "my-app", { mode: "release" })
+    .available,
+  false,
+);
+assert.throws(() => normalizeSelection({ preset: "app", frontend: "router" }));
+assert.equal(
+  buildScaffoldCommand({ preset: "app" }, "my-app", {
+    mode: "release",
+    manifest: {
+      ...VERIFIED_V0141_RELEASE_MANIFEST,
+      generatorArchiveUrl: "https://example.test/file;bad.tgz",
+    },
+  }).available,
+  false,
+);
 
 assert.equal(resolveBunExecutable("/path/to/bun"), "/path/to/bun");
 assert.equal(resolveBunExecutable("C:\\bin\\bun.exe"), "C:\\bin\\bun.exe");
@@ -16,6 +59,9 @@ assert.equal(resolveBunExecutable(testBunx), process.execPath);
 let counter = 0;
 function projectOptions(args: string[]) {
   const parsed = parseArguments([`flare-plan-fixture-${process.pid}-${counter++}`, ...args]);
+  if (parsed.preset === "fullstack" && !parsed.flarePackagePath) {
+    parsed.flarePackagePath = resolve(import.meta.dir, "../../flare");
+  }
   return makeProjectOptions(parsed);
 }
 
@@ -55,6 +101,34 @@ assert.equal(
 );
 
 const fullstack = createProjectPlan(projectOptions(["--preset", "fullstack"]));
+assert.equal(fullstack.options.frontend, "start");
+rejects(
+  () => makeProjectOptions(parseArguments(["unreleased-fullstack", "--preset", "fullstack"])),
+  /requires --flare-package/,
+);
+for (const database of ["none", "d1", "neon"]) {
+  for (const auth of database === "none" ? ["none"] : ["none", "better-auth"]) {
+    const router = createProjectPlan(
+      projectOptions([
+        "--preset",
+        "fullstack",
+        "--frontend",
+        "router",
+        "--db",
+        database,
+        `--auth=${auth}`,
+      ]),
+    );
+    assert.equal(router.options.frontend, "router");
+    assert.equal(router.templateLayers.at(-1), "fullstack/router");
+  }
+}
+for (const preset of ["app", "worker", "extension"]) {
+  rejects(
+    () => projectOptions(["--preset", preset, "--frontend", "router"]),
+    /only.*fullstack|fullstack.*only/i,
+  );
+}
 assert.deepEqual(fullstack.templateLayers, ["base", "app", "fullstack/common"]);
 
 const fullstackD1 = createProjectPlan(projectOptions(["--preset", "fullstack", "--db", "d1"]));
@@ -141,7 +215,7 @@ rejects(
 rejects(() => projectOptions(["--auth"]), /requires a database/i);
 rejects(() => projectOptions(["--db", "postgres"]), /Choose none, d1, or neon/i);
 rejects(() => projectOptions(["--auth=false"]), /Choose none or better-auth/i);
-rejects(() => projectOptions(["--flare-package", "relative/path.tgz"]), /absolute path/i);
+rejects(() => projectOptions(["--flare-package", "relative/path.tgz"]), /does not exist/i);
 rejects(
   () => projectOptions(["--flare-package", "https://example.com/archive.zip"]),
   /must point to a \.tgz archive/i,

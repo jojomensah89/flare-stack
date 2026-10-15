@@ -1,8 +1,21 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { getWorkerName, type ProjectContext } from "../project";
+import {
+  getAppD1Bindings,
+  getResourceProject,
+  getWorkerName,
+  type ProjectContext,
+} from "../project";
 import {
   assertCommandSucceeded,
   type CommandRunner,
@@ -128,7 +141,11 @@ export function serverDirectory(project: ProjectContext): string {
 }
 
 export function workerDirectory(project: ProjectContext): string {
-  return project.config.preset === "worker" ? serverDirectory(project) : webDirectory(project);
+  return project.wranglerPath
+    ? dirname(project.wranglerPath)
+    : project.config.preset === "worker"
+      ? serverDirectory(project)
+      : webDirectory(project);
 }
 
 export function runTool(
@@ -155,7 +172,11 @@ export function withConfig(project: ProjectContext, args: string[]): string[] {
   return [...args, "--config", project.wranglerPath];
 }
 
-export function withBuiltDeploymentConfig(project: ProjectContext, args: string[]): string[] {
+export function withBuiltDeploymentConfig(
+  project: ProjectContext,
+  args: string[],
+  environment: "production" | "preview" = "production",
+): string[] {
   const generatedConfig = join(webDirectory(project), ".wrangler", "deploy", "config.json");
   if (!existsSync(generatedConfig)) {
     throw new Error(
@@ -196,14 +217,108 @@ export function withBuiltDeploymentConfig(project: ProjectContext, args: string[
     !builtConfig ||
     typeof builtConfig !== "object" ||
     Array.isArray(builtConfig) ||
-    (builtConfig as Record<string, unknown>).name !== getWorkerName(project)
+    (builtConfig as Record<string, unknown>).name !== getWorkerName(project, environment)
   ) {
     throw new Error(
-      `The Cloudflare Vite build config must target Worker ${getWorkerName(project)}.`,
+      `The Cloudflare Vite build config must target Worker ${getWorkerName(project, environment)}.`,
     );
+  }
+  if ((builtConfig as Record<string, unknown>).account_id !== project.wrangler.account_id) {
+    throw new Error(
+      `The built ${environment} web Worker account_id does not match ${project.wranglerPath}; rebuild before deployment.`,
+    );
+  }
+  if (project.config.preset === "fullstack") {
+    const services = (builtConfig as Record<string, unknown>).services;
+    const expectedServer = getWorkerName(getResourceProject(project), environment);
+    const serverBindings = Array.isArray(services)
+      ? services.filter((service: unknown) => {
+          return Boolean(
+            service &&
+            typeof service === "object" &&
+            (service as Record<string, unknown>).binding === "SERVER",
+          );
+        })
+      : [];
+    if (
+      serverBindings.length !== 1 ||
+      !serverBindings.every((service: unknown) => {
+        if (!service || typeof service !== "object") return false;
+        const binding = service as Record<string, unknown>;
+        return binding.binding === "SERVER" && binding.service === expectedServer;
+      })
+    ) {
+      throw new Error(
+        `Built ${environment} web Worker must bind SERVER to ${expectedServer}; refusing a cross-environment deploy.`,
+      );
+    }
   }
   // Wrangler follows the Vite plugin's .wrangler/deploy/config.json redirect when no --config is supplied.
   return args;
+}
+
+/** Find the auxiliary Worker emitted by the same Vite build, identified by its Worker name. */
+export function withBuiltServerDeploymentConfig(
+  project: ProjectContext,
+  args: string[],
+  environment: "production" | "preview" = "production",
+): string[] {
+  const resource = getResourceProject(project);
+  const name = getWorkerName(resource, environment);
+  const candidates: Array<{ path: string; config: Record<string, unknown> }> = [];
+  const visit = (directory: string, depth: number) => {
+    if (depth > 6 || !existsSync(directory)) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path, depth + 1);
+      else if (entry.isFile() && (entry.name === "wrangler.json" || entry.name === "worker.json")) {
+        let config: unknown;
+        try {
+          config = JSON.parse(readFileSync(path, "utf8"));
+        } catch {
+          continue;
+        }
+        if (
+          config &&
+          typeof config === "object" &&
+          (config as Record<string, unknown>).name === name
+        ) {
+          candidates.push({ path, config: config as Record<string, unknown> });
+        }
+      }
+    }
+  };
+  visit(join(webDirectory(project), "dist"), 0);
+  if (candidates.length !== 1)
+    throw new Error(
+      `Expected exactly one built server config for ${name} under apps/web/dist; found ${candidates.length}. Rebuild before deployment.`,
+    );
+  const candidate = candidates[0]!;
+  if (candidate.config.account_id !== resource.wrangler.account_id) {
+    throw new Error(
+      `The built ${environment} server Worker account_id does not match ${resource.wranglerPath}; rebuild before deployment.`,
+    );
+  }
+  if (project.config.database === "d1") {
+    const expected = getAppD1Bindings(resource)[environment];
+    const databases = candidate.config.d1_databases;
+    const database = Array.isArray(databases) ? databases[0] : undefined;
+    if (
+      !Array.isArray(databases) ||
+      databases.length !== 1 ||
+      !database ||
+      typeof database !== "object" ||
+      (database as Record<string, unknown>).binding !== expected.binding ||
+      (database as Record<string, unknown>).database_name !== expected.databaseName ||
+      (database as Record<string, unknown>).database_id !== expected.databaseId
+    ) {
+      throw new Error(
+        `Built ${name} must use the ${environment} D1 database; refusing a cross-environment deploy.`,
+      );
+    }
+  }
+  return [...args, "--config", candidate.path];
 }
 
 export function ensureProductionEnvironment(project: ProjectContext, deps: CliDependencies): void {

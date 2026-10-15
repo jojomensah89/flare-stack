@@ -1,11 +1,11 @@
 # Flare Stack: Router SPA, Effect backend, UI standards, and quick-start website
 
-Status: proposed; awaiting design approval before implementation.
+Status: approved for implementation; tracked in draft PR #15. Release publication and remote deployment remain separate approvals.
 Reviewed: 2026-10-15.
 
 User-confirmed direction: React + TanStack Router, TanStack Query, no Hono RPC, and Effect backend services with thin Hono HTTP routes. The prior Hono RPC recommendation is superseded.
 
-Additional user requirements: Base UI + Tailwind with CSS-variable theming; fixes for the verified shadcn audit findings; a simple Rubik-inspired landing page with a Better-T-Stack-style section covering the preset combinations and a copyable scaffolding command. This proposal describes the requested work; these features are not implemented by this documentation update.
+Additional user requirements: Base UI + Tailwind with CSS-variable theming; fixes for the verified shadcn audit findings; a simple Rubik-inspired landing page with a Better-T-Stack-style section covering the preset combinations and a copyable scaffolding command. See [the implementation plan](router-effect-implementation-plan.md) for progress and verification evidence.
 
 ## Problem
 

@@ -1,6 +1,5 @@
 import type { Fetcher } from "@cloudflare/workers-types";
 import { EVLOG_REDACTION, logStructuredError } from "@repo/observability";
-import { app as serverApp } from "@repo/server";
 import { createStartHandler, defaultStreamHandler } from "@tanstack/react-start/server";
 import { initWorkersLogger, withEvlog } from "evlog/workers";
 import { applySecurityHeaders, requireFlareEnvironment } from "./security";
@@ -50,7 +49,13 @@ const worker = withEvlog<AppRuntimeBindings>(
     } catch (error) {
       logStructuredError(error, { operation: "worker.environment", requestId });
       return applySecurityHeaders(
-        Response.json({ error: "Worker environment is not configured" }, { status: 500 }),
+        Response.json(
+          {
+            error: { code: "WORKER_ENVIRONMENT", message: "Worker environment is not configured." },
+            requestId,
+          },
+          { status: 500 },
+        ),
         "production",
         requestId,
       );
@@ -59,19 +64,23 @@ const worker = withEvlog<AppRuntimeBindings>(
     logger.set({ requestId, environment });
     try {
       const url = new URL(request.url);
-      if (url.pathname.startsWith("/api/")) {
-        const isAuthRoute = url.pathname === "/api/auth" || url.pathname.startsWith("/api/auth/");
-        if (bindings.SERVER?.fetch) {
-          const forwardReq = requestWithId(request, requestId);
-          const response = await bindings.SERVER.fetch(forwardReq as any);
-          return applySecurityHeaders(response as unknown as Response, environment, requestId);
+      if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+        if (!bindings.SERVER?.fetch) {
+          return applySecurityHeaders(
+            Response.json(
+              {
+                error: { code: "SERVER_UNAVAILABLE", message: "The API server is unavailable." },
+                requestId,
+              },
+              { status: 503 },
+            ),
+            environment,
+            requestId,
+          );
         }
-
-        if (!isAuthRoute) {
-          const forwardReq = requestWithId(request, requestId);
-          const response = await serverApp.fetch(forwardReq, bindings as any);
-          return applySecurityHeaders(response, environment, requestId);
-        }
+        const forwardReq = requestWithId(request, requestId);
+        const response = await bindings.SERVER.fetch(forwardReq as any);
+        return applySecurityHeaders(response as unknown as Response, environment, requestId);
       }
 
       const response = await handleStartRequest(request);
@@ -79,7 +88,13 @@ const worker = withEvlog<AppRuntimeBindings>(
     } catch (error) {
       logStructuredError(error, { operation: "worker.request", requestId });
       return applySecurityHeaders(
-        Response.json({ error: "Internal Server Error" }, { status: 500 }),
+        Response.json(
+          {
+            error: { code: "INTERNAL_ERROR", message: "The request could not be completed." },
+            requestId,
+          },
+          { status: 500 },
+        ),
         environment,
         requestId,
       );

@@ -1,8 +1,21 @@
 import { resolve } from "node:path";
+import { normalizeSelection } from "./catalog";
 import { FLARE_VERSION, type ProjectOptions, type ProjectPlan, UserInputError } from "./model";
 import { makeReleaseMetadata } from "./release";
 
 export function createProjectPlan(options: ProjectOptions): ProjectPlan {
+  let frontend: ProjectOptions["frontend"];
+  try {
+    frontend = normalizeSelection(options).frontend;
+  } catch (error) {
+    throw new UserInputError(
+      error instanceof Error ? error.message : "Unsupported project choices.",
+    );
+  }
+  const normalizedOptions: ProjectOptions = {
+    ...options,
+    ...(frontend ? { frontend } : {}),
+  };
   if (
     options.preset !== "app" &&
     options.preset !== "fullstack" &&
@@ -40,47 +53,50 @@ export function createProjectPlan(options: ProjectOptions): ProjectPlan {
   }
 
   const templateLayers = ["base"];
-  if (options.preset === "worker") {
+  if (normalizedOptions.preset === "worker") {
     templateLayers.push("worker/common");
-  } else if (options.preset === "extension") {
+  } else if (normalizedOptions.preset === "extension") {
     templateLayers.push("extension/common");
   } else {
     templateLayers.push("app");
-    if (options.preset === "fullstack") {
+    if (normalizedOptions.preset === "fullstack") {
       templateLayers.push("fullstack/common");
     }
   }
 
-  if (options.database === "d1") {
+  if (normalizedOptions.database === "d1") {
     templateLayers.push("db/d1");
-    if (options.preset === "fullstack") {
+    if (normalizedOptions.preset === "fullstack") {
       templateLayers.push("fullstack/db-d1");
-    } else if (options.preset === "worker") {
+    } else if (normalizedOptions.preset === "worker") {
       templateLayers.push("worker/db-d1");
     }
-  } else if (options.database === "neon") {
+  } else if (normalizedOptions.database === "neon") {
     templateLayers.push("db/neon");
-    if (options.preset === "fullstack") {
+    if (normalizedOptions.preset === "fullstack") {
       templateLayers.push("fullstack/db-neon");
-    } else if (options.preset === "worker") {
+    } else if (normalizedOptions.preset === "worker") {
       templateLayers.push("worker/db-neon");
     }
   }
-  if (options.auth === "better-auth") {
+  if (normalizedOptions.auth === "better-auth") {
     templateLayers.push("auth/better-auth");
-    if (options.preset === "fullstack") {
+    if (normalizedOptions.preset === "fullstack") {
       templateLayers.push("fullstack/auth-better-auth");
     }
-    if (options.database === "neon") {
+    if (normalizedOptions.database === "neon") {
       templateLayers.push("auth/better-auth-neon");
-      if (options.preset === "fullstack") {
+      if (normalizedOptions.preset === "fullstack") {
         templateLayers.push("fullstack/auth-better-auth-neon");
       }
     }
   }
+  if (normalizedOptions.preset === "fullstack" && normalizedOptions.frontend === "router") {
+    templateLayers.push("fullstack/router");
+  }
 
   return {
-    options,
+    options: normalizedOptions,
     templateLayers,
     releaseMetadata: makeReleaseMetadata(),
     validationSteps: [

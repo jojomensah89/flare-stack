@@ -8,8 +8,10 @@ import {
   printCommandOutput,
   runTool,
   serverDirectory,
+  workerDirectory,
   webDirectory,
   withBuiltDeploymentConfig,
+  withBuiltServerDeploymentConfig,
   withConfig,
   type CliDependencies,
 } from "./common";
@@ -24,6 +26,8 @@ import { runtimeVars, validateRemoteHosts } from "./hosts";
 import { requireValidSecretsForPreview, verifyPreviewSecretsAfterDeploy } from "./secrets";
 import {
   getRequiredSecrets,
+  getResourceProject,
+  getWorkerName,
   requireApp,
   requireSupportedAppDatabase,
   type ProjectContext,
@@ -38,6 +42,14 @@ export async function commandPreview(
   expectOnlyFlags(args, ["--name", "--tag", "--message", "--url"]);
   requireApp(project, "flare preview");
   requireSupportedAppDatabase(project, "flare preview");
+  if (
+    project.config.preset === "fullstack" &&
+    ["--name", "--tag", "--message"].some((flag) => getOption(args, flag) !== undefined)
+  ) {
+    throw new Error(
+      "Fullstack preview uses fixed isolated preview Workers; --name, --tag and --message apply only to Worker Previews.",
+    );
+  }
   if (getEnv(deps).CLOUDFLARE_ENV !== undefined) {
     throw new Error(
       "Preview requires CLOUDFLARE_ENV to be unset so the production config is not selected accidentally.",
@@ -57,7 +69,7 @@ export async function commandPreview(
         deps,
         "wrangler",
         migrationArgs(project, "preview", true),
-        webDirectory(project),
+        workerDirectory(getResourceProject(project)),
       );
       printCommandOutput(output, apply);
       assertCommandSucceeded(apply, "Apply preview D1 migrations");
@@ -73,22 +85,38 @@ export async function commandPreview(
   }
 
   const build = runTool(deps, "bun", ["run", "build"], project.root, {
-    env: makeEnv(deps, { CLOUDFLARE_ENV: undefined, FLARE_ENVIRONMENT: "preview" }),
+    env: makeEnv(deps, {
+      CLOUDFLARE_ENV: project.config.preset === "fullstack" ? "preview" : undefined,
+      FLARE_ENVIRONMENT: "preview",
+    }),
   });
   printCommandOutput(output, build);
   assertCommandSucceeded(build, "Preview build");
 
   if (project.config.preset === "fullstack") {
-    output.log("Deploying backend server Worker Preview (apps/server)...");
-    const serverPreview = runTool(
-      deps,
-      "wrangler",
-      ["versions", "upload", "--env", "preview"],
-      serverDirectory(project),
-      { env: clearCloudflareEnvironment(deps) },
-    );
+    const serverArgs = withBuiltServerDeploymentConfig(project, ["deploy"], "preview");
+    const webArgs = withBuiltDeploymentConfig(project, ["deploy"], "preview");
+    output.log("Deploying isolated persistent preview server (apps/server)...");
+    const serverPreview = runTool(deps, "wrangler", serverArgs, serverDirectory(project), {
+      env: clearCloudflareEnvironment(deps),
+    });
     printCommandOutput(output, serverPreview);
     assertCommandSucceeded(serverPreview, "Server Worker Preview deploy");
+    const webPreview = runTool(deps, "wrangler", webArgs, webDirectory(project), {
+      env: clearCloudflareEnvironment(deps),
+    });
+    printCommandOutput(output, webPreview);
+    assertCommandSucceeded(webPreview, "Web persistent preview deploy");
+    const publicUrl =
+      getOption(args, "--url") ??
+      (webPreview.stdout.match(/https:\/\/[A-Za-z0-9._-]+\.workers\.dev/g) ?? [])[0];
+    if (!publicUrl)
+      throw new Error(
+        `Preview deployed, but its public URL is unverified. Run flare health with the URL for ${getWorkerName(project, "preview")}.`,
+      );
+    await verifyAppHealth(publicUrl, deps.fetcher ?? fetch, 5, 1500, "/api/health");
+    output.log(`Persistent preview health checks passed for ${publicUrl}.`);
+    return 0;
   }
 
   const previewFlags: string[] = ["preview", "--json"];
@@ -128,7 +156,7 @@ export async function commandPreview(
     );
     return 2;
   }
-  const healthPath = project.config.preset === "fullstack" ? "/api/health" : "/health";
+  const healthPath = "/health";
   try {
     await verifyAppHealth(publicUrl, deps.fetcher ?? fetch, 5, 1500, healthPath);
     output.log(`Preview health checks passed for ${publicUrl}: root and ${healthPath}.`);

@@ -24,6 +24,7 @@
   ],
   "env": {
     "development": {
+      "name": "{{PROJECT_NAME}}-server",
       "secrets": {
         "required": ["BETTER_AUTH_SECRET"],
       },

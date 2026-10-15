@@ -9,7 +9,7 @@ import {
   hasOption,
   printCommandOutput,
   runTool,
-  webDirectory,
+  workerDirectory,
   withConfig,
   type CliDependencies,
   type D1DatabaseRecord,
@@ -34,6 +34,7 @@ import {
 import { initializeLocalSecrets, readSecretFile } from "../env";
 import {
   getAppD1Bindings,
+  getResourceProject,
   getRequiredSecrets,
   getWorkerName,
   loadProject,
@@ -58,7 +59,8 @@ export async function commandSetupCloudflare(
       "This project has authentication disabled and does not use AUTH_ALLOWED_HOSTS host inputs.",
     );
   }
-  const workerName = getWorkerName(project);
+  let resourceProject = getResourceProject(project);
+  const workerName = getWorkerName(resourceProject);
   if (authEnabled) validateHostOverrides(args, project, deps);
   const whoAmIAccountId = callWhoAmI(
     project,
@@ -71,10 +73,10 @@ export async function commandSetupCloudflare(
   const productionHost = authHosts?.production;
   const previewHost = authHosts?.preview;
 
-  validateRuntimeVarParity(project);
+  validateRuntimeVarParity(resourceProject);
   let production: D1DatabaseRecord | undefined;
   let preview: D1DatabaseRecord | undefined;
-  let updatedConfig = project.wranglerSource;
+  let updatedConfig = resourceProject.wranglerSource;
   if (project.config.database === "d1") {
     const bindings = getAppD1Bindings(project);
     const existing = fetchD1Records(project, deps);
@@ -84,29 +86,34 @@ export async function commandSetupCloudflare(
       : [...existing, production];
     preview = ensureRemoteD1(project, deps, afterProduction, bindings.preview);
     updatedConfig = patchD1ResourceIds(
-      project.wranglerSource,
-      project.wranglerNode,
+      resourceProject.wranglerSource,
+      resourceProject.wranglerNode,
       new Map([
         [production.name, production.id],
         [preview.name, preview.id],
       ]),
     );
   }
-  const withHosts = patchRuntimeHosts(updatedConfig, project, productionHost, previewHost);
-  atomicWrite(project.wranglerPath, `${withHosts.trimEnd()}\n`);
+  const withHosts = patchRuntimeHosts(updatedConfig, resourceProject, productionHost, previewHost);
+  atomicWrite(resourceProject.wranglerPath, `${withHosts.trimEnd()}\n`);
   project = await loadProject(project.root);
+  resourceProject = getResourceProject(project);
   validateRemoteHosts(project);
-  const types = runTool(
-    deps,
-    "wrangler",
-    withConfig(project, ["types", "--include-runtime=false"]),
-    webDirectory(project),
-    {
-      env: clearCloudflareEnvironment(deps),
-    },
-  );
-  printCommandOutput(output, types);
-  assertCommandSucceeded(types, "Regenerate Cloudflare binding types after setup");
+  for (const target of project.config.preset === "fullstack"
+    ? [project, resourceProject]
+    : [project]) {
+    const types = runTool(
+      deps,
+      "wrangler",
+      withConfig(target, ["types", "--include-runtime=false"]),
+      workerDirectory(target),
+      {
+        env: clearCloudflareEnvironment(deps),
+      },
+    );
+    printCommandOutput(output, types);
+    assertCommandSucceeded(types, "Regenerate Cloudflare binding types after setup");
+  }
   if (production && preview) {
     output.log(
       `Provisioned D1 resources ${production.name} (${production.id}) and ${preview.name} (${preview.id}); updated ${project.wranglerPath}.`,
@@ -138,8 +145,8 @@ export async function commandSetupCloudflare(
       );
     }
 
-    const previewFile = join(project.root, "apps", "web", ".preview.vars");
-    const previewExample = join(project.root, "apps", "web", ".preview.vars.example");
+    const previewFile = join(workerDirectory(resourceProject), ".preview.vars");
+    const previewExample = join(workerDirectory(resourceProject), ".preview.vars.example");
     const previewSecrets = initializeLocalSecrets(previewExample, previewFile, required);
     if (previewSecrets.generated.length > 0) {
       output.log(`Generated preview secret name(s): ${previewSecrets.generated.join(", ")}.`);

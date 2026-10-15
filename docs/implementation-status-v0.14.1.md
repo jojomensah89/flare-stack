@@ -1,5 +1,7 @@
 # Flare Stack implementation status
 
+> Release audit correction (2026-10-15): the published v0.14.1 generator archive contains only app/none, app/D1, and app/D1/Better Auth. The broader source-profile and provider results recorded below are historical claims, not an archive manifest or fresh verification. Current Router/Effect work is tracked in [the implementation plan](router-effect-implementation-plan.md) and remains unreleased. Do not infer that a source feature is available from the published archive.
+
 Verified locally on Windows with Bun 1.4.2, through 2026-10-01. The v0.14.1 documents remain the full design; this implementation delivers the approved first app path, not the entire roadmap.
 
 ## Completed first path

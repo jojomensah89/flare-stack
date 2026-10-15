@@ -5,6 +5,7 @@ export interface FlareConfig {
   flareVersion: string;
   productionBranch: string;
   preset: "app" | "fullstack" | "extension" | "worker";
+  frontend?: "start" | "router";
   database: "none" | "d1" | "neon";
   auth: "none" | "better-auth";
   observability: "evlog" | "none";
@@ -39,6 +40,22 @@ export function validateFlareConfig(value: unknown): FlareConfig {
   }
   if (!config.preset || !presets.includes(config.preset)) {
     throw new Error(`Unsupported project preset: ${String(config.preset)}.`);
+  }
+  if (
+    config.frontend !== undefined &&
+    config.frontend !== "start" &&
+    config.frontend !== "router"
+  ) {
+    throw new Error(`Unsupported frontend: ${String(config.frontend)}.`);
+  }
+  if (config.frontend === "router" && config.preset !== "fullstack") {
+    throw new Error("The Router frontend requires the fullstack preset.");
+  }
+  if (
+    config.frontend !== undefined &&
+    (config.preset === "worker" || config.preset === "extension")
+  ) {
+    throw new Error("Frontend selection is not supported for worker or extension presets.");
   }
   if (!config.database || !databases.includes(config.database)) {
     throw new Error(`Unsupported database profile: ${String(config.database)}.`);

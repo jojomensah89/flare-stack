@@ -4,6 +4,8 @@ Reviewed on 2026-10-01 against the current source, recorded release evidence, an
 
 ## Distribution decision and current release
 
+Audit update (2026-10-15): inspecting both published archives confirmed that the generator supports only app/none, app/D1, and app/D1/Better Auth. A fresh public HTTPS app/D1/auth scaffold completed install, setup, checks, and build on Windows. Broader source profiles, including the approved Router/Effect revision, require matching source packages and are not contained in that release. The site catalog records the verified archive hashes and exact three-combination allowlist.
+
 Flare packages are distributed as GitHub Release tarballs; Flare itself is not published to npm. The public [v0.14.1 release](https://github.com/jojomensah89/flare-stack/releases/tag/v0.14.1) exists and carries the `create-flare-stack-0.14.1.tgz` generator archive and the `flare-0.14.1.tgz` lifecycle archive, as recorded by the implementation status. The repository remote and package metadata identify `jojomensah89/flare-stack`; `OWNER` is no longer a placeholder for this release.
 
 The current default generated-project command is:

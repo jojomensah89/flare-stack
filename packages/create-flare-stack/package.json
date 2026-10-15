@@ -11,6 +11,9 @@
     "templates/**"
   ],
   "type": "module",
+  "exports": {
+    "./catalog": "./src/catalog.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "verify:planner": "bun run scripts/verify-planner.ts",

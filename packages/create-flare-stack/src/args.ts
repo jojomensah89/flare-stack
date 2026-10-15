@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, parse, resolve } from "node:path";
+import { basename, dirname, parse, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import {
   FLARE_VERSION,
@@ -10,9 +10,8 @@ import {
   type ProjectOptions,
   UserInputError,
 } from "./model";
+import { validateCatalogProjectName } from "./catalog";
 import { resolveRequestedSkills } from "./skills";
-
-const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
 function takeValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -36,6 +35,7 @@ export function parseArguments(args: string[]): ParsedArguments {
 
     if (
       value === "--preset" ||
+      value === "--frontend" ||
       value === "--db" ||
       value === "--database" ||
       value === "--flare-package"
@@ -43,6 +43,7 @@ export function parseArguments(args: string[]): ParsedArguments {
       const optionValue = takeValue(args, index, value);
       index += 1;
       if (value === "--preset") parsed.preset = optionValue;
+      if (value === "--frontend") parsed.frontend = optionValue;
       if (value === "--db" || value === "--database") parsed.database = optionValue;
       if (value === "--flare-package") parsed.flarePackagePath = optionValue;
       continue;
@@ -50,6 +51,7 @@ export function parseArguments(args: string[]): ParsedArguments {
 
     if (
       value.startsWith("--preset=") ||
+      value.startsWith("--frontend=") ||
       value.startsWith("--db=") ||
       value.startsWith("--database=") ||
       value.startsWith("--flare-package=")
@@ -59,6 +61,7 @@ export function parseArguments(args: string[]): ParsedArguments {
       const optionValue = value.slice(separator + 1);
       if (!optionValue) throw new UserInputError(`${flag} requires a value.`);
       if (flag === "--preset") parsed.preset = optionValue;
+      if (flag === "--frontend") parsed.frontend = optionValue;
       if (flag === "--db" || flag === "--database") parsed.database = optionValue;
       if (flag === "--flare-package") parsed.flarePackagePath = optionValue;
       continue;
@@ -103,24 +106,8 @@ export function parseArguments(args: string[]): ParsedArguments {
 }
 
 export function validateProjectName(name: string): string {
-  if (name.length < 1 || name.length > 58) {
-    throw new UserInputError(
-      "Project name must be between 1 and 58 characters so the generated Worker name stays within Cloudflare's 63-character limit.",
-    );
-  }
-  if (name !== name.toLowerCase()) {
-    throw new UserInputError(
-      "Use a lowercase project name so it works consistently across package managers.",
-    );
-  }
-  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)) {
-    throw new UserInputError(
-      "Project name may contain lowercase letters, numbers, and hyphens; it must start and end with a letter or number.",
-    );
-  }
-  if (RESERVED_WINDOWS_NAMES.test(name)) {
-    throw new UserInputError(`Project name \`${name}\` is reserved on Windows.`);
-  }
+  const validation = validateCatalogProjectName(name);
+  if (!validation.valid) throw new UserInputError(validation.message ?? "Project name is invalid.");
   return name;
 }
 
@@ -141,6 +128,14 @@ export function validateRequestedChoices(parsed: ParsedArguments): void {
     if (database !== "none" && database !== "d1" && database !== "neon") {
       throw new UserInputError(
         `Database \`${parsed.database}\` is not supported. Choose none, d1, or neon.`,
+      );
+    }
+  }
+  if (parsed.frontend) {
+    const frontend = parsed.frontend.toLowerCase();
+    if (frontend !== "start" && frontend !== "router") {
+      throw new UserInputError(
+        `Frontend \`${parsed.frontend}\` is not supported. Choose start or router.`,
       );
     }
   }
@@ -270,6 +265,15 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
       `Preset \`${parsed.preset}\` is not available in this release. Supported presets: app, fullstack, worker, extension.`,
     );
   }
+  const scopedNameValidation = validateCatalogProjectName(projectName, preset);
+  if (!scopedNameValidation.valid) {
+    throw new UserInputError(scopedNameValidation.message ?? "Project name is invalid.");
+  }
+  if (preset === "fullstack" && !parsed.flarePackagePath) {
+    throw new UserInputError(
+      "Fullstack generation from this unreleased source requires --flare-package. From the Flare Stack checkout use --flare-package ./packages/flare, or provide the matching Flare CLI archive.",
+    );
+  }
 
   const db = (parsed.database ?? "none").toLowerCase() as Database;
   if (db !== "none" && db !== "d1" && db !== "neon") {
@@ -282,6 +286,12 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
   if (auth !== "none" && auth !== "better-auth") {
     throw new UserInputError(
       `Auth option \`${parsed.auth}\` is not supported. Choose none or better-auth.`,
+    );
+  }
+  const frontend = parsed.frontend?.toLowerCase() as "start" | "router" | undefined;
+  if (frontend && preset !== "fullstack") {
+    throw new UserInputError(
+      "The --frontend option is available only for the fullstack preset. The app preset uses TanStack Start; Router requires --preset fullstack.",
     );
   }
   if (preset === "worker" && auth === "better-auth") {
@@ -316,17 +326,13 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
         );
       }
     } else {
-      if (!isAbsolute(parsed.flarePackagePath)) {
+      const localFlarePackagePath = resolve(cwd, parsed.flarePackagePath);
+      if (!existsSync(localFlarePackagePath)) {
         throw new UserInputError(
-          "--flare-package must be an absolute path or an http(s) URL to a Flare package archive.",
+          `Local Flare package path does not exist: ${localFlarePackagePath}`,
         );
       }
-      if (!existsSync(parsed.flarePackagePath)) {
-        throw new UserInputError(
-          `Local Flare package path does not exist: ${parsed.flarePackagePath}`,
-        );
-      }
-      const packageInfo = readLocalFlarePackage(parsed.flarePackagePath);
+      const packageInfo = readLocalFlarePackage(localFlarePackagePath);
       if (packageInfo.name !== "flare" || packageInfo.version !== FLARE_VERSION) {
         throw new UserInputError(
           `--flare-package must be flare@${FLARE_VERSION}; received ${packageInfo.name ?? "unknown"}@${packageInfo.version ?? "unknown"}.`,
@@ -347,7 +353,7 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
     ? parsed.flarePackagePath.startsWith("http://") ||
       parsed.flarePackagePath.startsWith("https://")
       ? parsed.flarePackagePath
-      : resolve(parsed.flarePackagePath)
+      : resolve(cwd, parsed.flarePackagePath)
     : undefined;
 
   const skills = resolveRequestedSkills(parsed.skills);
@@ -356,6 +362,7 @@ export function makeProjectOptions(parsed: ParsedArguments, cwd = process.cwd())
     destination,
     projectName,
     preset,
+    ...(preset === "fullstack" ? { frontend: frontend ?? "start" } : {}),
     database: db,
     auth,
     skills,

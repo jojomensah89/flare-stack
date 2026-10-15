@@ -1,34 +1,43 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "{{PROJECT_NAME}}-server",
+  "main": "./src/index.ts",
   "compatibility_date": "2026-09-30",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "src/index.ts",
+  "workers_dev": false,
+  "preview_urls": false,
   "secrets": {
     "required": ["DATABASE_URL", "BETTER_AUTH_SECRET"],
   },
   "vars": {
     "FLARE_ENVIRONMENT": "production",
+    "AUTH_ALLOWED_HOSTS": "__SET_AUTH_ALLOWED_HOSTS__",
+    "AUTH_PROTOCOL": "https",
   },
   "env": {
     "development": {
+      "name": "{{PROJECT_NAME}}-server",
       "secrets": {
         "required": ["DATABASE_URL", "BETTER_AUTH_SECRET"],
       },
       "vars": {
         "FLARE_ENVIRONMENT": "development",
+        "AUTH_ALLOWED_HOSTS": "localhost:5173",
+        "AUTH_PROTOCOL": "http",
       },
     },
     "preview": {
+      "name": "{{PROJECT_NAME}}-server-preview",
+      "workers_dev": false,
+      "preview_urls": false,
       "secrets": {
         "required": ["DATABASE_URL", "BETTER_AUTH_SECRET"],
       },
       "vars": {
         "FLARE_ENVIRONMENT": "preview",
+        "AUTH_ALLOWED_HOSTS": "__SET_AUTH_ALLOWED_HOSTS__",
+        "AUTH_PROTOCOL": "https",
       },
     },
-  },
-  "observability": {
-    "enabled": true,
   },
 }

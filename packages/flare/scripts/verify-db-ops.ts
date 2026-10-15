@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import {
@@ -340,7 +348,7 @@ interface TempProject {
 }
 
 function createTempProject(): TempProject {
-  const root = mkdtempSync(join(tmpdir(), "flare-db-ops-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "flare-db-ops-")));
   const web = join(root, "apps", "web");
   const db = join(root, "packages", "db");
   mkdirSync(web, { recursive: true });

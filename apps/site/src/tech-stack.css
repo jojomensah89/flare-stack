@@ -1,0 +1,245 @@
+@utility tech-stack-section {
+  padding-block: 0 80px;
+  scroll-margin-top: 28px;
+}
+
+@utility tech-stack-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.tech-stack-heading p {
+  margin: 12px 0 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+@utility tech-stack-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--tech-grid-line);
+}
+
+@utility tech-card {
+  display: grid;
+  min-width: 0;
+  min-height: 340px;
+  grid-template-rows: auto 1fr auto;
+  padding: 22px 22px 24px;
+  background: var(--tech-surface);
+  color: var(--tech-text);
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.tech-card[data-tech="tanstack"] {
+  --tech-brand: var(--tech-tanstack);
+}
+
+.tech-card[data-tech="cloudflare"] {
+  --tech-brand: var(--tech-cloudflare);
+}
+
+.tech-card[data-tech="effect"] {
+  --tech-brand: var(--tech-effect);
+}
+
+.tech-card[data-tech="data"] {
+  --tech-brand: var(--tech-drizzle);
+}
+
+.tech-card[data-tech="better-auth"] {
+  --tech-brand: var(--tech-better-auth);
+}
+
+.tech-card[data-tech="interface"] {
+  --tech-brand: var(--tech-tailwind);
+}
+
+.tech-card[data-tech="wxt"] {
+  --tech-brand: var(--tech-wxt);
+}
+
+.tech-card[data-tech="neon"] {
+  --tech-brand: var(--tech-neon);
+}
+
+.tech-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 22px;
+}
+
+@utility tech-card-category {
+  color: var(--tech-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.tech-card-arrow {
+  color: var(--tech-brand);
+  font-size: 19px;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity 160ms ease;
+}
+
+@utility tech-art {
+  position: relative;
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--tech-brand);
+}
+
+.tech-art pre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  margin: 0;
+  place-items: center;
+  overflow: hidden;
+  font-family: var(--app-font-mono);
+  font-size: clamp(3.5px, 0.38vw, 5px);
+  line-height: 1;
+  white-space: pre;
+  opacity: 0.4;
+  user-select: none;
+}
+
+.tech-art .tech-art-alt {
+  opacity: 0;
+  animation: tech-art-shimmer 4.8s linear infinite;
+}
+
+.tech-brand-logos {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  width: 100%;
+  pointer-events: none;
+}
+
+@utility tech-brand-mark {
+  display: block;
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+}
+
+.tech-brand-logos[data-count="2"] .tech-brand-mark {
+  width: 68px;
+  height: 68px;
+}
+
+@keyframes tech-art-shimmer {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@utility tech-card-copy {
+  display: grid;
+  gap: 7px;
+}
+
+@utility tech-card-title {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  transition: color 180ms ease;
+}
+
+@utility tech-card-detail {
+  color: var(--tech-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.tech-card:hover .tech-card-title,
+.tech-card:focus-visible .tech-card-title {
+  color: var(--tech-brand);
+}
+
+.tech-card:hover .tech-card-arrow,
+.tech-card:focus-visible .tech-card-arrow {
+  opacity: 1;
+}
+
+.tech-card:focus-visible {
+  position: relative;
+  z-index: 2;
+  outline: 3px solid var(--tech-brand);
+  outline-offset: -4px;
+}
+
+.tech-card:hover .tech-art-alt,
+.tech-card:focus-visible .tech-art-alt {
+  animation-play-state: paused;
+  opacity: 0.62;
+}
+
+@media (max-width: 1000px) {
+  .tech-stack-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .tech-stack-section {
+    padding-block: 0 64px;
+  }
+
+  .tech-stack-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .tech-stack-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tech-card {
+    min-height: 300px;
+    padding-inline: var(--site-gutter);
+  }
+
+  .tech-art pre {
+    font-size: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tech-card,
+  .tech-card-title,
+  .tech-card-arrow {
+    transition: none;
+  }
+
+  .tech-art .tech-art-alt {
+    animation: none;
+    opacity: 0;
+  }
+
+  .tech-card:hover .tech-art-alt,
+  .tech-card:focus-visible .tech-art-alt {
+    opacity: 0;
+  }
+}

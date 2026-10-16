@@ -3,17 +3,24 @@ import {
   ensureProductionEnvironment,
   expectOnlyFlags,
   getOutput,
+  workerDirectory,
   type CliDependencies,
 } from "./common";
 import { missingSecretNames, parseSecretEnvironment, remoteSecretNames } from "./secrets";
 import { readSecretFile } from "../env";
-import { getRequiredSecrets, requireSupportedAppDatabase, type ProjectContext } from "../project";
+import {
+  getResourceProject,
+  getRequiredSecrets,
+  requireSupportedAppDatabase,
+  type ProjectContext,
+} from "../project";
 
 export async function commandEnvCheck(
   project: ProjectContext,
   deps: CliDependencies,
   args: string[],
 ): Promise<number> {
+  project = getResourceProject(project);
   expectOnlyFlags(args, ["--env"]);
   const environment = parseSecretEnvironment(args);
   requireSupportedAppDatabase(project, "flare env check");
@@ -21,9 +28,7 @@ export async function commandEnvCheck(
   const required = getRequiredSecrets(project);
   if (environment === "production") ensureProductionEnvironment(project, deps);
   const file = join(
-    project.root,
-    "apps",
-    "web",
+    workerDirectory(project),
     environment === "local" ? ".dev.vars" : ".preview.vars",
   );
   if (environment !== "production") {

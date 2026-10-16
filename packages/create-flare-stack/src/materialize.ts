@@ -117,6 +117,11 @@ async function renderFiles(root: string, values: TemplateValues, current = root)
     const original = await readFile(path, "utf8");
     let rendered = original;
     rendered = rendered.replace(
+      /^([ \t]*)\/\/\s*\{\{\s*FRONTEND_CONFIG\s*\}\}\s*$/gm,
+      (_token, indent: string) =>
+        values.FRONTEND_CONFIG ? `${indent}${values.FRONTEND_CONFIG}` : "",
+    );
+    rendered = rendered.replace(
       /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g,
       (token, key: string) => values[key] ?? token,
     );
@@ -162,6 +167,179 @@ async function patchRootPackage(plan: ProjectPlan, destination: string): Promise
   devDependencies.flare = resolveExpectedFlareDependency(plan);
   packageJson.devDependencies = devDependencies;
   await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
+}
+
+async function copyTemplateFile(
+  templateRoot: string,
+  relativePath: string,
+  destination: string,
+): Promise<void> {
+  const source = resolve(templateRoot, relativePath);
+  if (!isInside(templateRoot, source)) {
+    throw new GenerationError(
+      "template validation",
+      `Invalid template file: ${relativePath}`,
+      "Repair the generator template map.",
+    );
+  }
+  await mkdir(dirname(destination), { recursive: true });
+  await cp(source, destination, { force: true });
+}
+
+async function updatePackageManifest(
+  path: string,
+  update: (manifest: Record<string, unknown>) => void,
+): Promise<void> {
+  const manifest = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  update(manifest);
+  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
+function dependencyMap(
+  manifest: Record<string, unknown>,
+  field: "dependencies" | "devDependencies",
+) {
+  const dependencies = (manifest[field] ?? {}) as Record<string, string>;
+  manifest[field] = dependencies;
+  return dependencies;
+}
+
+async function finalizeFullstackProject(
+  plan: ProjectPlan,
+  destination: string,
+  templateRoot: string,
+): Promise<void> {
+  const { database, auth, frontend = "start" } = plan.options;
+  const web = join(destination, "apps", "web");
+  const server = join(destination, "apps", "server");
+  const router = frontend === "router";
+  if (auth === "none") {
+    await rm(join(server, "src/routes/auth.ts"), { force: true });
+    const entryPath = join(server, "src/index.ts");
+    const entry = (await readFile(entryPath, "utf8"))
+      .replace(/^import \{ authRoutes \} from "\.\/routes\/auth";\r?\n/m, "")
+      .replace('.route("/auth", authRoutes)', "");
+    await writeFile(entryPath, entry, "utf8");
+  }
+
+  await copyTemplateFile(
+    templateRoot,
+    router
+      ? "fullstack/router/apps/web/wrangler.jsonc"
+      : "fullstack/common/apps/web/wrangler.jsonc",
+    join(web, "wrangler.jsonc"),
+  );
+
+  for (const relativePath of [
+    "apps/web/src/server/sample.ts",
+    "apps/web/src/server/auth.ts",
+    "apps/web/src/server/auth-config.ts",
+    "apps/web/src/server/auth.neon.ts",
+    "apps/web/src/server/session.ts",
+    "apps/web/src/routes/api",
+    "apps/web/src/components/demo-cards.tsx",
+    "apps/web/.dev.vars.example",
+    "apps/web/.preview.vars.example",
+  ]) {
+    await rm(join(destination, relativePath), { recursive: true, force: true });
+  }
+
+  if (router) {
+    for (const relativePath of [
+      "apps/web/src/server",
+      "apps/web/src/router.tsx",
+      "apps/web/src/routes/health.ts",
+    ]) {
+      await rm(join(destination, relativePath), { recursive: true, force: true });
+    }
+  }
+
+  const pagePath = join(web, "src", "routes", "index.tsx");
+  if (database === "none") {
+    await copyTemplateFile(templateRoot, "fullstack/no-db-page.tsx", pagePath);
+    for (const path of ["src/routes/items.ts", "src/services.ts"]) {
+      await rm(join(server, path), { force: true });
+    }
+    const serverEntryPath = join(server, "src", "index.ts");
+    const serverEntry = (await readFile(serverEntryPath, "utf8"))
+      .replace(/^import \{ itemRoutes \} from "\.\/routes\/items";\r?\n/m, "")
+      .replace(/^\s*\.route\("\/items", itemRoutes\)\r?\n/m, "");
+    await writeFile(serverEntryPath, serverEntry, "utf8");
+  } else {
+    await copyTemplateFile(templateRoot, "fullstack/query-page.tsx", pagePath);
+    let page = await readFile(pagePath, "utf8");
+    page = page.replace(
+      "// AUTH_IMPORT",
+      auth === "better-auth" ? 'import { AuthCard } from "../components/auth-card";' : "",
+    );
+    page = page.replace("{/* AUTH_CARD */}", auth === "better-auth" ? "<AuthCard />" : "");
+    await writeFile(pagePath, page, "utf8");
+  }
+
+  await updatePackageManifest(join(web, "package.json"), (manifest) => {
+    const dependencies = dependencyMap(manifest, "dependencies");
+    for (const name of ["@repo/db", "@repo/server", "hono", "@tanstack/react-start"]) {
+      delete dependencies[name];
+    }
+    Object.assign(dependencies, {
+      "@repo/observability": "workspace:*",
+      "@repo/shared": "workspace:*",
+      "@repo/ui": "workspace:*",
+      "@tanstack/react-query": "5.104.3",
+      "@tanstack/react-router": "1.170.40",
+      evlog: "2.29.0",
+      "lucide-react": "1.49.0",
+      react: "19.2.8",
+      "react-dom": "19.2.8",
+      zod: "4.6.5",
+    });
+    if (auth === "better-auth") dependencies["better-auth"] = "1.7.6";
+    else delete dependencies["better-auth"];
+
+    const devDependencies = dependencyMap(manifest, "devDependencies");
+    if (router) {
+      Object.assign(devDependencies, {
+        "@cloudflare/vite-plugin": "1.62.2",
+        "@cloudflare/workers-types": "4.20260702.1",
+        "@tailwindcss/vite": "4.3.3",
+        "@tanstack/router-plugin": "1.168.41",
+        "@types/node": "24.13.3",
+        "@types/react": "19.2.18",
+        "@types/react-dom": "19.2.5",
+        "@vitejs/plugin-react": "4.7.0",
+        tailwindcss: "4.3.3",
+        typescript: "7.0.2",
+        vite: "7.3.6",
+        wrangler: "4.144.0",
+      });
+    } else {
+      dependencies["@tanstack/react-start"] = "1.168.59";
+    }
+  });
+
+  await updatePackageManifest(join(server, "package.json"), (manifest) => {
+    const dependencies = dependencyMap(manifest, "dependencies");
+    Object.assign(dependencies, {
+      "@repo/observability": "workspace:*",
+      "@repo/shared": "workspace:*",
+      effect: "3.22.2",
+      evlog: "2.29.0",
+      hono: "4.13.12",
+    });
+    if (database === "none") delete dependencies["@repo/db"];
+    else {
+      dependencies["@repo/db"] = "workspace:*";
+      dependencies["drizzle-orm"] = "0.45.3";
+    }
+    if (database === "neon") dependencies["@neondatabase/serverless"] = "1.1.0";
+    else delete dependencies["@neondatabase/serverless"];
+    if (auth === "better-auth") dependencies["better-auth"] = "1.7.6";
+    else delete dependencies["better-auth"];
+
+    const exports = (manifest.exports ?? {}) as Record<string, unknown>;
+    delete exports["./contract"];
+    manifest.exports = exports;
+  });
 }
 
 async function packageFiles(root: string, current = root): Promise<string[]> {
@@ -238,6 +416,15 @@ export async function validateMaterializedProject(
     new RegExp(`\\bdatabase\\s*:\\s*["']${plan.options.database}["']`),
     new RegExp(`\\bauth\\s*:\\s*["']${plan.options.auth}["']`),
   ];
+  const configFrontend =
+    plan.options.preset === "app"
+      ? "start"
+      : plan.options.preset === "fullstack"
+        ? (plan.options.frontend ?? "start")
+        : undefined;
+  if (configFrontend) {
+    expectedConfig.push(new RegExp(`\\bfrontend\\s*:\\s*["']${configFrontend}["']`));
+  }
   if (expectedConfig.some((pattern) => !pattern.test(flareConfig))) {
     throw new GenerationError(
       "generated project validation",
@@ -290,7 +477,32 @@ export async function validateMaterializedProject(
     await assertPathPresent(root, "apps/server", "dedicated Hono server");
     await assertPathPresent(root, "apps/server/src/index.ts", "Hono server entry point");
     await assertPathPresent(root, "apps/server/wrangler.jsonc", "Hono server Wrangler config");
-    await assertPathPresent(root, "apps/web/src/lib/server-client.ts", "Server RPC client");
+    await assertPathAbsent(root, "apps/web/src/lib/server-client.ts", "Hono RPC client");
+    await assertPathPresent(root, "apps/web/src/lib/api-client.ts", "schema-validated HTTP client");
+    await assertPathPresent(root, "packages/shared/src/api.ts", "shared HTTP schemas");
+    if (plan.options.frontend === "router") {
+      await assertPathPresent(root, "apps/web/index.html", "Router SPA HTML entry");
+      await assertPathPresent(root, "apps/web/src/main.tsx", "Router SPA browser entry");
+      await assertPathPresent(root, "apps/web/src/worker.ts", "Router SPA Worker entry");
+      await assertPathAbsent(root, "apps/web/src/server", "TanStack Start server files");
+      await assertPathAbsent(root, "apps/web/src/router.tsx", "TanStack Start router runtime");
+      await assertPathAbsent(root, "apps/web/src/routes/health.ts", "TanStack Start server route");
+      await assertPathAbsent(root, "apps/web/src/routes/api", "TanStack Start API route");
+      const webManifest = JSON.parse(
+        await readFile(join(root, "apps/web/package.json"), "utf8"),
+      ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+      if (
+        webManifest.dependencies?.["@tanstack/react-start"] ||
+        !webManifest.dependencies?.["@tanstack/react-router"] ||
+        !webManifest.devDependencies?.["@cloudflare/vite-plugin"]
+      ) {
+        throw new GenerationError(
+          "generated project validation",
+          "The Router frontend must use Vite and TanStack Router without the TanStack Start runtime.",
+          "Keep the frontend package graph aligned with the selected Router overlay.",
+        );
+      }
+    }
   }
   if (plan.options.database !== "neon") {
     await assertPathAbsent(root, "packages/db/src/neon", "Neon implementation");
@@ -313,10 +525,22 @@ export async function validateMaterializedProject(
     );
   }
   const primaryWranglerPath =
-    plan.options.preset === "worker"
+    plan.options.preset === "worker" || plan.options.preset === "fullstack"
       ? join(root, "apps", "server", "wrangler.jsonc")
       : join(root, "apps", "web", "wrangler.jsonc");
   const wranglerText = await readFile(primaryWranglerPath, "utf8");
+
+  if (plan.options.preset === "fullstack") {
+    const webWranglerText = await readFile(join(root, "apps/web/wrangler.jsonc"), "utf8");
+    if (/d1_databases|DATABASE_URL|BETTER_AUTH_SECRET/.test(webWranglerText)) {
+      throw new GenerationError(
+        "generated project validation",
+        "Fullstack database bindings and authentication secrets must be private to apps/server.",
+        "Move database and authentication bindings into the dedicated server Worker config.",
+      );
+    }
+    await assertPathAbsent(root, "apps/server/src/contract.ts", "Hono RPC contract export");
+  }
 
   if (plan.options.database === "none") {
     await assertPathAbsent(root, "packages/db", "database package");
@@ -416,7 +640,7 @@ export async function validateMaterializedProject(
       );
     } else {
       const previewExamplePath =
-        plan.options.preset === "worker"
+        plan.options.preset === "worker" || plan.options.preset === "fullstack"
           ? "apps/server/.preview.vars.example"
           : "apps/web/.preview.vars.example";
       await assertPathPresent(root, previewExamplePath, "Neon Preview database secret example");
@@ -438,6 +662,62 @@ export async function validateMaterializedProject(
     }
     if (plan.options.preset === "fullstack") {
       await assertPathAbsent(root, "apps/server/src/routes/auth.ts", "Server Better Auth routes");
+    }
+  } else if (plan.options.preset === "fullstack") {
+    const authSchemaPath =
+      plan.options.database === "neon"
+        ? "packages/db/src/neon/schema/auth.ts"
+        : "packages/db/src/schema/auth.ts";
+    for (const relativePath of [
+      "apps/web/src/lib/auth-client.ts",
+      "apps/web/src/components/auth-card.tsx",
+      "apps/server/src/routes/auth.ts",
+      "apps/server/src/auth/index.ts",
+      "apps/server/src/auth/config.ts",
+      "apps/server/.dev.vars.example",
+      "apps/server/.preview.vars.example",
+      authSchemaPath,
+    ]) {
+      await assertPathPresent(root, relativePath, "server-owned Better Auth integration");
+    }
+    for (const relativePath of [
+      "apps/web/src/server/auth.ts",
+      "apps/web/src/server/auth-config.ts",
+      "apps/web/src/server/session.ts",
+      "apps/web/src/routes/api/auth",
+      "apps/web/.dev.vars.example",
+      "apps/web/.preview.vars.example",
+    ]) {
+      await assertPathAbsent(root, relativePath, "web-side Better Auth runtime or secret");
+    }
+    const serverSecretDeclarations =
+      wranglerText.match(/"required"\s*:\s*\[[\s\S]*?"BETTER_AUTH_SECRET"[\s\S]*?\]/g) ?? [];
+    if (serverSecretDeclarations.length !== 3) {
+      throw new GenerationError(
+        "generated project validation",
+        "apps/server must declare BETTER_AUTH_SECRET at the top level and in development and Preview environments.",
+        "Keep Wrangler required-secret declarations aligned across production, development, and Preview.",
+      );
+    }
+    for (const examplePath of [
+      "apps/server/.dev.vars.example",
+      "apps/server/.preview.vars.example",
+    ]) {
+      const example = await readFile(join(root, examplePath), "utf8");
+      if (!/^BETTER_AUTH_SECRET\s*=/m.test(example)) {
+        throw new GenerationError(
+          "generated project validation",
+          `${examplePath} is missing the required BETTER_AUTH_SECRET entry.`,
+          "Keep server environment examples aligned with Wrangler secret declarations.",
+        );
+      }
+      if (plan.options.database === "neon" && !/^DATABASE_URL\s*=/m.test(example)) {
+        throw new GenerationError(
+          "generated project validation",
+          `${examplePath} is missing the required DATABASE_URL entry for Neon.`,
+          "Keep DATABASE_URL in server environment examples for Neon.",
+        );
+      }
     }
   } else {
     const authSchemaPath =
@@ -481,25 +761,6 @@ export async function validateMaterializedProject(
           "generated project validation",
           `${examplePath} is missing the required DATABASE_URL entry for Neon.`,
           "Keep DATABASE_URL in environment examples for Neon.",
-        );
-      }
-    }
-
-    if (plan.options.preset === "fullstack") {
-      await assertPathPresent(root, "apps/server/src/routes/auth.ts", "Server Better Auth routes");
-      await assertPathPresent(root, "apps/server/.dev.vars.example", "Server dev vars example");
-      const serverWranglerText = await readFile(
-        join(root, "apps", "server", "wrangler.jsonc"),
-        "utf8",
-      );
-      const serverSecretDeclarations =
-        serverWranglerText.match(/"required"\s*:\s*\[[\s\S]*?"BETTER_AUTH_SECRET"[\s\S]*?\]/g) ??
-        [];
-      if (serverSecretDeclarations.length !== 3) {
-        throw new GenerationError(
-          "generated project validation",
-          "apps/server must declare BETTER_AUTH_SECRET at the top level and in development and Preview environments.",
-          "Keep Wrangler required-secret declarations aligned across production, development, and Preview.",
         );
       }
     }
@@ -594,6 +855,16 @@ export async function materializeProject(
     PROJECT_NAME: plan.options.projectName,
     FLARE_VERSION,
     PRESET: plan.options.preset,
+    FRONTEND_LABEL:
+      plan.options.frontend === "router"
+        ? "React + Vite + TanStack Router + TanStack Query"
+        : "React + TanStack Start + TanStack Query",
+    FRONTEND_CONFIG:
+      plan.options.preset === "app"
+        ? 'frontend: "start",'
+        : plan.options.preset === "fullstack"
+          ? `frontend: "${plan.options.frontend ?? "start"}",`
+          : "",
     DATABASE: plan.options.database,
     AUTH: plan.options.auth,
     DB_ENABLED: String(plan.options.database !== "none"),
@@ -631,6 +902,10 @@ export async function materializeProject(
 
   if (plan.options.preset === "worker" || plan.options.preset === "extension") {
     await rm(join(target, "apps", "web"), { recursive: true, force: true });
+  }
+
+  if (plan.options.preset === "fullstack") {
+    await finalizeFullstackProject(plan, target, root);
   }
 
   await renderFiles(target, values);

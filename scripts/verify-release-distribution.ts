@@ -141,6 +141,13 @@ try {
     { name: "test-d1", preset: "app", database: "d1", auth: "none" },
     { name: "test-auth", preset: "app", database: "d1", auth: "better-auth" },
     { name: "test-fullstack", preset: "fullstack", database: "d1", auth: "better-auth" },
+    {
+      name: "test-router",
+      preset: "fullstack",
+      frontend: "router",
+      database: "d1",
+      auth: "better-auth",
+    },
     { name: "test-worker", preset: "worker", database: "d1", auth: "none" },
     { name: "test-extension", preset: "extension", database: "none", auth: "none" },
   ] as const;
@@ -155,6 +162,7 @@ try {
       projectDir,
       "--preset",
       profile.preset,
+      ...("frontend" in profile ? ["--frontend", profile.frontend] : []),
       "--db",
       profile.database,
       `--auth=${profile.auth}`,
@@ -230,7 +238,14 @@ try {
     }
     if (profile.auth === "better-auth") {
       assert.ok(
-        existsSync(join(projectDir, "apps/web/src/server/auth.ts")),
+        existsSync(
+          join(
+            projectDir,
+            profile.preset === "fullstack"
+              ? "apps/server/src/auth/index.ts"
+              : "apps/web/src/server/auth.ts",
+          ),
+        ),
         "Better Auth integration must exist",
       );
     }

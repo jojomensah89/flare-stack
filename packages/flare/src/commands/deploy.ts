@@ -12,6 +12,7 @@ import {
   serverDirectory,
   webDirectory,
   withBuiltDeploymentConfig,
+  withBuiltServerDeploymentConfig,
   type CliDependencies,
 } from "./common";
 import { readMigrationState, readNeonMigrationState } from "./db";
@@ -99,18 +100,22 @@ export async function commandDeploy(
     return 0;
   }
 
+  const argsForWrangler = withBuiltDeploymentConfig(
+    project,
+    pairedReleaseTag ? ["deploy", "--tag", pairedReleaseTag] : ["deploy"],
+  );
+  const serverArgs = pairedReleaseTag
+    ? withBuiltServerDeploymentConfig(project, ["deploy", "--tag", pairedReleaseTag])
+    : undefined;
+
   if (project.config.preset === "fullstack") {
-    if (!pairedReleaseTag) {
+    if (!pairedReleaseTag || !serverArgs) {
       throw new Error("Fullstack deploy is missing its coordinated release tag.");
     }
     output.log("Deploying backend server Worker (apps/server)...");
-    const serverResult = runTool(
-      deps,
-      "wrangler",
-      ["deploy", "--tag", pairedReleaseTag],
-      serverDirectory(project),
-      { env: clearCloudflareEnvironment(deps) },
-    );
+    const serverResult = runTool(deps, "wrangler", serverArgs, serverDirectory(project), {
+      env: clearCloudflareEnvironment(deps),
+    });
     printCommandOutput(output, serverResult);
     assertCommandSucceeded(serverResult, "Production Server Worker deploy");
   }
@@ -119,10 +124,6 @@ export async function commandDeploy(
     project.config.preset === "fullstack"
       ? "Deploying frontend web Worker (apps/web)..."
       : "Deploying Worker (apps/web)...",
-  );
-  const argsForWrangler = withBuiltDeploymentConfig(
-    project,
-    pairedReleaseTag ? ["deploy", "--tag", pairedReleaseTag] : ["deploy"],
   );
   const result = runTool(deps, "wrangler", argsForWrangler, webDirectory(project), {
     env: clearCloudflareEnvironment(deps),

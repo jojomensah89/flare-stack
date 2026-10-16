@@ -29,4 +29,5 @@ Thumbs.db
 
 # Scratch / ad-hoc scripts
 scratch/
+.taste-skill/
 .test-sandboxes/

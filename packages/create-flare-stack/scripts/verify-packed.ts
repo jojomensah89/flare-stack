@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // Verify the archive consumers receive, including files package managers omit by default.
-const root = mkdtempSync(join(tmpdir(), "flare-packed-fixture-"));
-assert.equal(dirname(resolve(root)), resolve(tmpdir()));
+// Windows runners can expose %TEMP% through an 8.3 path; Bun canonicalizes workspace paths.
+const temporaryDirectory = realpathSync.native(tmpdir());
+const root = mkdtempSync(join(temporaryDirectory, "flare-packed-fixture-"));
+assert.equal(dirname(resolve(root)), resolve(temporaryDirectory));
 assert.ok(basename(root).startsWith("flare-packed-fixture-"));
 const packageDirectory = resolve(import.meta.dir, "..");
 const flarePackageDirectory = resolve(import.meta.dir, "../../flare");
@@ -98,6 +108,13 @@ try {
     { name: "packed-d1", preset: "app", database: "d1", auth: "none" },
     { name: "packed-auth", preset: "app", database: "d1", auth: "better-auth" },
     { name: "packed-fullstack-auth", preset: "fullstack", database: "d1", auth: "better-auth" },
+    {
+      name: "packed-router-auth",
+      preset: "fullstack",
+      frontend: "router",
+      database: "d1",
+      auth: "better-auth",
+    },
     { name: "packed-neon", preset: "app", database: "neon", auth: "none" },
     { name: "packed-neon-auth", preset: "app", database: "neon", auth: "better-auth" },
     {
@@ -119,7 +136,12 @@ try {
       "--db",
       profile.database,
       `--auth=${profile.auth}`,
-      ...(profile.preset === "extension" ? ["--flare-package", localFlareArchive] : []),
+      ...("frontend" in profile && typeof profile.frontend === "string"
+        ? ["--frontend", profile.frontend]
+        : []),
+      ...(profile.preset === "extension" || profile.preset === "fullstack"
+        ? ["--flare-package", localFlareArchive]
+        : []),
     ];
     const options = argsModule.makeProjectOptions(argsModule.parseArguments(profileArgs));
     if (profile.preset === "extension") {
@@ -164,7 +186,7 @@ try {
     const packageJson = JSON.parse(readFileSync(join(destination, "package.json"), "utf8"));
     assert.equal(
       packageJson.devDependencies?.flare,
-      profile.preset === "extension"
+      profile.preset === "extension" || profile.preset === "fullstack"
         ? `file:${localFlareArchive.replaceAll("\\", "/")}`
         : "https://github.com/jojomensah89/flare-stack/releases/download/v0.14.1/flare-0.14.1.tgz",
       "Generated project must pin Flare to its selected release archive",
@@ -179,7 +201,7 @@ try {
       assert.ok(!existsSync(join(destination, "apps/server")));
     } else {
       const previewExamplePath =
-        profile.preset === "worker"
+        profile.preset === "worker" || profile.preset === "fullstack"
           ? "apps/server/.preview.vars.example"
           : "apps/web/.preview.vars.example";
       assert.equal(

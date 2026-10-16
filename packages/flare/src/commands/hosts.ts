@@ -1,5 +1,10 @@
 import { getObject, getProperty, parseJsonc, replaceStringNodes, type JsoncNode } from "../jsonc";
-import { getWorkerName, type ProjectContext } from "../project";
+import {
+  getResourceProject,
+  getWorkerProject,
+  getWorkerName,
+  type ProjectContext,
+} from "../project";
 import {
   defaultPromptLine,
   getEnv,
@@ -66,7 +71,15 @@ export function patchRuntimeHosts(
     "preview",
   );
   nextRoot = parseJsonc(result, project.wranglerPath);
-  result = patchRuntimeVar(result, nextRoot, ["previews", "vars"], "FLARE_ENVIRONMENT", "preview");
+  if (getProperty(nextRoot, "previews")) {
+    result = patchRuntimeVar(
+      result,
+      nextRoot,
+      ["previews", "vars"],
+      "FLARE_ENVIRONMENT",
+      "preview",
+    );
+  }
   if (project.config.auth === "better-auth") {
     if (!production || !preview) {
       throw new Error("Auth-enabled projects require production and Preview host allowlists.");
@@ -82,7 +95,15 @@ export function patchRuntimeHosts(
       preview,
     );
     nextRoot = parseJsonc(result, project.wranglerPath);
-    result = patchRuntimeVar(result, nextRoot, ["previews", "vars"], "AUTH_ALLOWED_HOSTS", preview);
+    if (getProperty(nextRoot, "previews")) {
+      result = patchRuntimeVar(
+        result,
+        nextRoot,
+        ["previews", "vars"],
+        "AUTH_ALLOWED_HOSTS",
+        preview,
+      );
+    }
     nextRoot = parseJsonc(result, project.wranglerPath);
     result = patchRuntimeVar(result, nextRoot, ["vars"], "AUTH_PROTOCOL", "https");
     nextRoot = parseJsonc(result, project.wranglerPath);
@@ -94,7 +115,9 @@ export function patchRuntimeHosts(
       "https",
     );
     nextRoot = parseJsonc(result, project.wranglerPath);
-    result = patchRuntimeVar(result, nextRoot, ["previews", "vars"], "AUTH_PROTOCOL", "https");
+    if (getProperty(nextRoot, "previews")) {
+      result = patchRuntimeVar(result, nextRoot, ["previews", "vars"], "AUTH_PROTOCOL", "https");
+    }
   }
   return result;
 }
@@ -132,7 +155,11 @@ export function runtimeVars(
 
 export function validateRuntimeVarParity(project: ProjectContext): void {
   const production = Object.keys(runtimeVars(project, "production")).sort();
-  for (const environment of ["development", "preview", "worker-preview"] as const) {
+  const environments =
+    project.config.preset === "fullstack" && !getProperty(project.wranglerNode, "previews")
+      ? (["development", "preview"] as const)
+      : (["development", "preview", "worker-preview"] as const);
+  for (const environment of environments) {
     const keys = Object.keys(runtimeVars(project, environment)).sort();
     if (
       keys.length !== production.length ||
@@ -212,6 +239,8 @@ export function parseHostList(
 }
 
 export function validateRemoteHosts(project: ProjectContext): void {
+  const publicWorkerName = getWorkerName(getWorkerProject(project, "web"));
+  project = getResourceProject(project);
   validateRuntimeVarParity(project);
   const productionVars = getObject(getProperty(project.wranglerNode, "vars"));
   const previewEnvironment = getProperty(
@@ -221,9 +250,15 @@ export function validateRemoteHosts(project: ProjectContext): void {
   const persistentPreviewVars = getObject(
     previewEnvironment ? getProperty(previewEnvironment, "vars") : undefined,
   );
-  const previewVars = getObject(
-    getProperty(getProperty(project.wranglerNode, "previews") ?? project.wranglerNode, "vars"),
-  );
+  const previewVars =
+    project.config.preset === "fullstack"
+      ? persistentPreviewVars
+      : getObject(
+          getProperty(
+            getProperty(project.wranglerNode, "previews") ?? project.wranglerNode,
+            "vars",
+          ),
+        );
   if (
     productionVars?.FLARE_ENVIRONMENT !== "production" ||
     previewVars?.FLARE_ENVIRONMENT !== "preview" ||
@@ -261,8 +296,8 @@ export function validateRemoteHosts(project: ProjectContext): void {
       );
     }
     const hosts = parseHostList(value, `AUTH_ALLOWED_HOSTS for ${environment}`, {
-      workerPreviewPattern: environment === "preview",
-      workerName: getWorkerName(project),
+      workerPreviewPattern: environment === "preview" && project.config.preset !== "fullstack",
+      workerName: publicWorkerName,
     });
     if (environment === "preview") {
       if (persistentPreviewVars?.AUTH_ALLOWED_HOSTS !== preview) {
@@ -504,13 +539,16 @@ export async function resolveCloudflareAuthHosts(
     "production AUTH_ALLOWED_HOSTS",
   ).join(",");
   const preview = parseHostList(
-    previewOverride ?? `*-${workerName}.${subdomain}.workers.dev`,
+    previewOverride ??
+      (project.config.preset === "fullstack"
+        ? `${workerName}-preview.${subdomain}.workers.dev`
+        : `*-${workerName}.${subdomain}.workers.dev`),
     "preview AUTH_ALLOWED_HOSTS",
-    { workerPreviewPattern: true, workerName },
+    { workerPreviewPattern: project.config.preset !== "fullstack", workerName },
   ).join(",");
   const productionHosts = parseHostList(production, "production AUTH_ALLOWED_HOSTS");
   const previewHosts = parseHostList(preview, "preview AUTH_ALLOWED_HOSTS", {
-    workerPreviewPattern: true,
+    workerPreviewPattern: project.config.preset !== "fullstack",
     workerName,
   });
   if (productionHosts.some((host) => previewHosts.includes(host))) {
@@ -557,7 +595,7 @@ export function validateHostOverrides(
   const preview =
     previewOverride !== undefined
       ? parseHostList(previewOverride, "preview AUTH_ALLOWED_HOSTS", {
-          workerPreviewPattern: true,
+          workerPreviewPattern: project.config.preset !== "fullstack",
           workerName,
         })
       : undefined;

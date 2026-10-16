@@ -9,10 +9,6 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./contract": {
-      "types": "./src/contract.ts",
-      "default": "./src/contract.ts"
     }
   },
   "scripts": {
@@ -22,6 +18,8 @@
   },
   "dependencies": {
     "@repo/observability": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "effect": "3.22.2",
     "evlog": "2.29.0",
     "hono": "4.13.12"
   },

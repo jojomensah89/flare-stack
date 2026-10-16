@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import type { ServerBindings, ServerEnv } from "./env";
 import { healthRoutes } from "./routes/health";
 import { itemRoutes } from "./routes/items";
+import { authRoutes } from "./routes/auth";
 
 function requestIdFrom(request: Request): string {
   const candidate = request.headers.get("cf-ray") ?? request.headers.get("x-request-id");
@@ -21,8 +22,33 @@ const app = new Hono<ServerEnv>()
     await next();
     c.header("x-request-id", requestId);
   })
+  .onError((error, c) => {
+    const requestId = c.get("requestId") ?? requestIdFrom(c.req.raw);
+    logStructuredError(new Error("An API request defect occurred."), {
+      operation: "server.request",
+      requestId,
+      defectType: error.name,
+    });
+    return c.json(
+      {
+        error: { code: "INTERNAL_ERROR", message: "The request could not be completed." },
+        requestId,
+      },
+      500,
+    );
+  })
+  .notFound((c) =>
+    c.json(
+      {
+        error: { code: "NOT_FOUND", message: "The requested API resource was not found." },
+        requestId: c.get("requestId"),
+      },
+      404,
+    ),
+  )
   .route("/health", healthRoutes)
-  .route("/items", itemRoutes);
+  .route("/items", itemRoutes)
+  .route("/auth", authRoutes);
 
 initWorkersLogger({
   env: { service: "{{PROJECT_NAME}}-server" },
@@ -45,7 +71,10 @@ const worker = withEvlog<ServerBindings>(
       logger.set({ requestId });
       logStructuredError(error, { operation: "server.request", requestId });
       return Response.json(
-        { error: "Internal Server Error", requestId },
+        {
+          error: { code: "INTERNAL_ERROR", message: "The request could not be completed." },
+          requestId,
+        },
         { status: 500, headers: { "x-request-id": requestId } },
       );
     }
@@ -55,4 +84,3 @@ const worker = withEvlog<ServerBindings>(
 
 export { app };
 export default worker;
-export type AppType = typeof app;

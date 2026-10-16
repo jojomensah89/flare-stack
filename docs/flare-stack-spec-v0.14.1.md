@@ -8,6 +8,12 @@
 
 ---
 
+## Source revision: Router and Effect
+
+The approved [Router and Effect proposal](react-router-spa-proposal.md) amends newly generated source output: fullstack supports TanStack Start (default) or React + Vite + TanStack Router, with TanStack Query. Thin Hono routes call Effect services; a browser-safe shared Zod DTO package defines the HTTP contract. Web code uses standard same-origin fetch and imports no server runtime or Hono app type. Database connections, Better Auth, and secrets belong to the private server Worker. This revision does not migrate existing projects.
+
+This source revision is unreleased. The actual published v0.14.1 generator contains only app/none, app/D1, and app/D1/Better Auth. Source commands for newer profiles require a matching source Flare CLI. The historical version label and roadmap below do not establish release acceptance. The dedicated `apps/site` builder must distinguish the three verified release combinations from the 19 source combinations.
+
 ## 1. What Flare is
 
 Flare is **not** a general-purpose stack configurator like Better T Stack.
@@ -114,7 +120,7 @@ Project-wide invariants belong in `AGENTS.md`. Specialized procedures belong in 
 | SPA routing | TanStack Router |
 | Server state | TanStack Query |
 | Dedicated API | Hono |
-| Fullstack internal API contract | Hono RPC |
+| Fullstack internal API contract | Schema-validated HTTP DTOs; thin Hono routes + Effect services |
 | Browser extension | WXT + React |
 | Runtime/hosting | Cloudflare Workers |
 | Cloudflare build integration | Vite + Cloudflare Vite plugin |
@@ -229,7 +235,7 @@ packages/
 
 The web application uses React 19, Vite, TanStack Router, TanStack Query, and shadcn/ui. The server uses Hono on Cloudflare Workers, plus Drizzle and Better Auth when those capabilities are enabled.
 
-The default internal web-to-server contract is **Hono RPC**. `apps/server` exports the Hono app type and `apps/web` imports it as a **type-only workspace dependency**, making the build relationship explicit to Bun/Turborepo without shipping server runtime code into the browser. OpenAPI + Scalar remain an optional recipe for public APIs. The server exposes a dedicated type-only contract entry (for example `@repo/server/contract`), the web uses `import type`, and Oxlint enforces type-only imports. No Cloudflare runtime value may be imported through the contract entry. Flare's release fixture compiles the web against the pinned server contract and blocks the release if Worker-global type leakage causes DOM/Workers conflicts; TS project references or generated declarations are the fallback if a pinned toolchain needs stronger isolation.
+The internal web-to-server contract is **schema-validated HTTP**. `packages/shared` exports browser-safe Zod schemas and inferred DTO types. Both web and server depend on this package. The browser client uses standard fetch with status checking, cancellation, and response validation; TanStack Query owns caching and mutation invalidation. Thin Hono routes validate HTTP input, run request-scoped Effect services, and return validated DTOs. Expected domain failures and unexpected defects map to separate sanitized responses. Web code must not import the Hono app type, server runtime, database, or auth secrets. OpenAPI + Scalar remain optional roadmap work.
 
 #### Production topology: separate Workers, one browser origin
 
@@ -250,7 +256,7 @@ Web Worker  (public)
         ▼
    Server Worker  (private/internal)
         │
-        ├── Hono RPC
+        ├── Hono HTTP routes + Effect services
         ├── Better Auth
         └── Drizzle
 ```
@@ -302,7 +308,7 @@ Therefore:
 
 - fullstack public health is `/api/health`,
 - Better Auth is `/api/auth/*`,
-- Hono RPC is mounted below `/api`,
+- validated HTTP endpoints are mounted below `/api`,
 - the standalone `worker` preset uses `/health` because it has no web forwarder.
 
 #### Local development mirrors production
@@ -3138,7 +3144,7 @@ Both must scaffold, build, and deploy with the expected auth routes and environm
 
 ### Phase 5 — `fullstack`
 
-Add `apps/web + apps/server`, Hono, **Hono RPC** as the default internal API contract, explicit type-only workspace dependency wiring, and the same-origin Service Binding model:
+Add `apps/web + apps/server`, thin Hono routes, Effect services, a shared browser-safe DTO contract, TanStack Query, and the same-origin Service Binding model. Start is the default frontend; Router SPA is the explicit alternative:
 
 - web Worker is the only public first-party origin,
 - `/api/*` uses `assets.run_worker_first`,
@@ -3215,7 +3221,7 @@ The release harness also includes these regression checks:
 - preview and production required secrets are independently configured,
 - `app + D1` and `worker + D1` Worker Previews bind preview D1 resources explicitly,
 - local D1 migration is visible to the running Vite/Worker process through the canonical `.wrangler/state` path,
-- changing a server Hono RPC type without updating the web consumer makes `bun check` fail,
+- changing shared DTO types without updating consumers makes `bun check` fail; runtime schema fixtures reject invalid responses,
 - fullstack `bun dev` starts only the Vite web process and does not double-start the auxiliary server,
 - the pinned Vite plugin loads the auxiliary server Worker's `apps/server/.dev.vars` required secrets exactly once during local fullstack development,
 - Better Auth dynamic base URL accepts localhost, the resolved production host, and the intended preview host, and rejects an unlisted Host header,
@@ -3280,7 +3286,7 @@ This is central to the promise that a newly generated repo works immediately.
 The following decisions are frozen for the first implementation unless real reference-app usage proves them wrong:
 
 - project shape is selected before capabilities,
-- Hono RPC is the internal API contract for `fullstack`,
+- validated HTTP DTOs are the internal API contract for newly generated `fullstack` projects,
 - Better Auth base scope is email/password + sessions only,
 - D1 and Neon are separate Drizzle profiles, never a runtime dual-driver switch,
 - local/preview/production resources are isolated by default,

@@ -6,6 +6,8 @@
   "semi": true,
   "singleQuote": false,
   "ignorePatterns": [
+    ".agents/skills/**",
+    ".taste-skill/**",
     "docs/flare-stack-spec-*.md",
     "**/routeTree.gen.ts",
     "**/worker-configuration.d.ts",

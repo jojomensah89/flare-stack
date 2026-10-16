@@ -57,4 +57,3 @@ const worker = withEvlog<ServerBindings>(
 
 export { app };
 export default worker;
-export type AppType = typeof app;

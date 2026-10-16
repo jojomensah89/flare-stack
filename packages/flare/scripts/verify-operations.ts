@@ -52,7 +52,19 @@ function fixtureProject(
     mkdirSync(serverDirectory, { recursive: true });
     writeFileSync(
       join(serverDirectory, "wrangler.jsonc"),
-      JSON.stringify(serverConfig, null, 2),
+      JSON.stringify(
+        {
+          vars: { FLARE_ENVIRONMENT: "production" },
+          secrets: { required: [] },
+          env: {
+            development: { vars: { FLARE_ENVIRONMENT: "development" }, secrets: { required: [] } },
+            preview: { vars: { FLARE_ENVIRONMENT: "preview" }, secrets: { required: [] } },
+          },
+          ...serverConfig,
+        },
+        null,
+        2,
+      ),
       "utf8",
     );
   }
@@ -241,10 +253,17 @@ async function testFullstackDeployUsesSharedReleaseTag(): Promise<void> {
   );
   writeFileSync(
     join(webDirectory, "wrangler.generated.json"),
-    JSON.stringify({ name: "flare-operations-web" }),
+    JSON.stringify({
+      name: "flare-operations-web",
+      services: [{ binding: "SERVER", service: "flare-operations-server" }],
+    }),
     "utf8",
   );
-
+  mkdirSync(join(webDirectory, "dist", "server"), { recursive: true });
+  writeFileSync(
+    join(webDirectory, "dist", "server", "wrangler.json"),
+    JSON.stringify({ name: "flare-operations-server" }),
+  );
   const project = await loadProject(root);
   const calls: Call[] = [];
   const logs: string[] = [];

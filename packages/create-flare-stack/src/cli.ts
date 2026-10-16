@@ -12,8 +12,9 @@ const HELP = `create-flare-stack ${FLARE_VERSION}
 Usage:
   bunx --bun --package ${release.generatorReleaseUrl} create-flare-stack <directory> [options]
 
-Supported in this release:
+Supported by this generator source:
   --preset app|fullstack|worker|extension
+  --frontend start|router
   --db none|d1|neon
   --auth                 Enable Better Auth (requires --db d1 or --db neon)
   --auth=none|better-auth
@@ -24,10 +25,18 @@ Supported in this release:
 
 The extension preset supports only --db none and --auth none.
 The worker preset does not support Better Auth.
+--frontend is available only for fullstack; omitted frontend defaults to start.
+Fullstack templates are unreleased and require an explicit matching --flare-package.
 `;
 
 async function collectInteractiveChoices<
-  T extends { preset?: string; database?: string; auth?: string; skills?: string },
+  T extends {
+    preset?: string;
+    frontend?: string;
+    database?: string;
+    auth?: string;
+    skills?: string;
+  },
 >(choices: T): Promise<T> {
   if (!stdin.isTTY || !stdout.isTTY) return choices;
   const ask = createInterface({ input: stdin, output: stdout });
@@ -37,6 +46,10 @@ async function collectInteractiveChoices<
         (await ask.question("Preset (app/fullstack/worker/extension) [app]: "))
           .trim()
           .toLowerCase() || "app";
+    }
+    if (choices.preset === "fullstack" && !choices.frontend) {
+      choices.frontend =
+        (await ask.question("Frontend (start/router) [start]: ")).trim().toLowerCase() || "start";
     }
     if (!choices.database) {
       choices.database =
@@ -85,7 +98,7 @@ export async function runCli(args: string[]): Promise<number> {
 
     console.log(`\nCreated and validated ${options.projectName}.`);
     console.log(
-      `Preset: ${options.preset} | Database: ${options.database} | Auth: ${options.auth}${options.skills && options.skills.length > 0 ? ` | Skills: ${options.skills.join(", ")}` : ""}`,
+      `Preset: ${options.preset}${options.preset === "fullstack" ? ` | Frontend: ${options.frontend ?? "start"}` : ""} | Database: ${options.database} | Auth: ${options.auth}${options.skills && options.skills.length > 0 ? ` | Skills: ${options.skills.join(", ")}` : ""}`,
     );
     console.log("\nNext steps:");
     console.log(`  cd ${options.projectName}`);

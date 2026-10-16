@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -20,6 +20,41 @@ export interface ProjectContext {
   wranglerSource: string;
   wranglerNode: JsoncNode;
   wrangler: Record<string, JsonValue>;
+  role?: "web" | "server";
+}
+
+/** Select a deployment role without changing the topology or public Worker identity. */
+export function getWorkerProject(project: ProjectContext, role: "web" | "server"): ProjectContext {
+  if (project.config.preset !== "fullstack") return project;
+  const path = join(project.root, "apps", role, "wrangler.jsonc");
+  if (project.wranglerPath === path) return project;
+  if (!existsSync(path)) throw new Error(`Missing ${role} Wrangler config: ${path}`);
+  const source = readFileSync(path, "utf8");
+  const node = parseJsonc(source, path);
+  const wrangler = getObject(node);
+  if (!wrangler) throw new Error(`${path} must contain a JSON object.`);
+  return {
+    ...project,
+    role,
+    wranglerPath: path,
+    wranglerSource: source,
+    wranglerNode: node,
+    wrangler,
+  };
+}
+
+/** Fullstack data and auth belong to the private backend, never the public asset Worker. */
+export function getResourceProject(project: ProjectContext): ProjectContext {
+  const resource = getWorkerProject(project, "server");
+  if (project.config.preset === "fullstack") {
+    const web = getWorkerProject(project, "web");
+    if (web.wrangler.account_id !== resource.wrangler.account_id) {
+      throw new Error(
+        "Fullstack web and server configs must declare the same account_id (or both omit it). No resource operation was attempted.",
+      );
+    }
+  }
+  return resource;
 }
 
 export function findProjectRoot(startDirectory: string): string {
@@ -38,17 +73,20 @@ export function findProjectRoot(startDirectory: string): string {
 export async function loadProject(startDirectory: string): Promise<ProjectContext> {
   const root = findProjectRoot(startDirectory);
   const configFile = join(root, "flare.config.ts");
-  const tempReloadFile = join(root, `.flare.config.${randomUUID()}.tmp.ts`);
-  copyFileSync(configFile, tempReloadFile);
+  // Bun caches file imports despite URL query strings. Use a distinct file and
+  // source for each read; canonicalize macOS /var -> /private/var temp paths.
+  const reloadId = randomUUID();
+  const reloadFile = join(root, `.flare.config.${reloadId}.tmp.ts`);
+  writeFileSync(reloadFile, `${readFileSync(configFile, "utf8")}\n// flare-reload: ${reloadId}\n`, {
+    flag: "wx",
+  });
   let configModule: { default: unknown };
   try {
-    configModule = (await import(pathToFileURL(tempReloadFile).href)) as { default: unknown };
+    configModule = (await import(pathToFileURL(realpathSync(reloadFile)).href)) as {
+      default: unknown;
+    };
   } finally {
-    try {
-      unlinkSync(tempReloadFile);
-    } catch {
-      // Ignore cleanup error
-    }
+    unlinkSync(reloadFile);
   }
   const config = validateFlareConfig(configModule.default);
   if (config.preset === "extension") {
@@ -152,6 +190,7 @@ export function getAppD1Bindings(project: ProjectContext): {
   production: D1Binding;
   preview: D1Binding;
 } {
+  project = getResourceProject(project);
   const production = readD1Bindings(
     getProperty(project.wranglerNode, "d1_databases"),
     "Production",
@@ -183,7 +222,10 @@ export function getAppD1Bindings(project: ProjectContext): {
   if (!developmentBinding || !productionBinding)
     throw new Error("The app preset is missing a required development or production D1 binding.");
 
-  const previewsNode = getProperty(project.wranglerNode, "previews");
+  const previewsNode =
+    project.config.preset === "fullstack"
+      ? getProperty(environment ?? project.wranglerNode, "preview")
+      : getProperty(project.wranglerNode, "previews");
   if (!previewsNode) {
     throw new Error(
       "The app preset requires a previews block with an isolated previews.d1_databases binding.",
@@ -250,8 +292,11 @@ export function getAppD1Bindings(project: ProjectContext): {
 }
 
 export function getRequiredSecrets(project: ProjectContext): string[] {
+  project = getResourceProject(project);
   const targetLabel =
-    project.config.preset === "worker" ? "apps/server/wrangler.jsonc" : "apps/web/wrangler.jsonc";
+    project.config.preset === "worker" || project.config.preset === "fullstack"
+      ? "apps/server/wrangler.jsonc"
+      : "apps/web/wrangler.jsonc";
   const readNames = (environment: string, node: JsoncNode): string[] => {
     const secretsNode = getProperty(node, "secrets");
     const requiredNode = getProperty(secretsNode ?? node, "required");
@@ -292,10 +337,20 @@ export function getRequiredSecrets(project: ProjectContext): string[] {
   return production;
 }
 
-export function getWorkerName(project: ProjectContext): string {
-  const name = project.wrangler.name;
+export function getWorkerName(
+  project: ProjectContext,
+  environment: "production" | "preview" = "production",
+): string {
+  const baseName = project.wrangler.name;
+  if (typeof baseName !== "string" || !/^[a-zA-Z0-9_-]+$/.test(baseName)) {
+    throw new Error(`${project.wranglerPath} must declare a valid Worker name.`);
+  }
+  const preview = getObject(
+    getProperty(getProperty(project.wranglerNode, "env") ?? project.wranglerNode, "preview"),
+  );
+  const name = environment === "preview" ? (preview?.name ?? `${baseName}-preview`) : baseName;
   if (typeof name !== "string" || !/^[a-zA-Z0-9_-]+$/.test(name)) {
-    throw new Error("apps/web/wrangler.jsonc must declare a valid Worker name.");
+    throw new Error(`${project.wranglerPath} must declare a valid Worker name.`);
   }
   return name;
 }

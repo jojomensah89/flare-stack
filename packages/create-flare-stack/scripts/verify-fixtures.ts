@@ -1,16 +1,23 @@
 import { strict as assert } from "node:assert";
-import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { makeProjectOptions, parseArguments } from "../src/args";
 import { createProjectPlan } from "../src/plan";
 import { createProject, type CommandRunner } from "../src/workflow";
+import { getObject, parseJsonc } from "../../flare/src/jsonc";
+import { patchRuntimeHosts } from "../../flare/src/commands/hosts";
 
 const args = process.argv.slice(2);
 const staticOnly = args.includes("--static");
 const extensionOnly = args.includes("--extension-only");
 const packageIndex = args.indexOf("--flare-package");
-const flarePackagePath = packageIndex >= 0 ? args[packageIndex + 1] : undefined;
+const flarePackagePath =
+  packageIndex >= 0
+    ? args[packageIndex + 1]
+    : staticOnly
+      ? resolve(import.meta.dir, "../../flare")
+      : undefined;
 if (packageIndex >= 0 && !flarePackagePath) {
   throw new Error("--flare-package requires an absolute package tarball or directory path.");
 }
@@ -20,7 +27,7 @@ if (!staticOnly && !flarePackagePath) {
   );
 }
 
-const fixtures = [
+const originalFixtures = [
   { name: "app-no-db", preset: "app", database: "none", auth: "none" },
   { name: "app-d1", preset: "app", database: "d1", auth: "none" },
   { name: "app-d1-auth", preset: "app", database: "d1", auth: "better-auth" },
@@ -36,10 +43,20 @@ const fixtures = [
   { name: "worker-neon", preset: "worker", database: "neon", auth: "none" },
   { name: "extension-none", preset: "extension", database: "none", auth: "none" },
 ] as const;
+const fixtures = [
+  ...originalFixtures,
+  ...originalFixtures
+    .filter((fixture) => fixture.preset === "fullstack")
+    .map((fixture) => ({
+      ...fixture,
+      name: fixture.name.replace("fullstack-", "fullstack-router-"),
+      frontend: "router" as const,
+    })),
+];
 assert.equal(
   fixtures.length,
-  14,
-  "The generated-project matrix must cover all 14 supported profiles.",
+  19,
+  "The generated-project matrix must cover all 19 supported profiles.",
 );
 assert.equal(
   new Set(fixtures.map((fixture) => fixture.name)).size,
@@ -48,7 +65,12 @@ assert.equal(
 );
 const selectedFixtures = extensionOnly
   ? fixtures.filter((fixture) => fixture.preset === "extension")
-  : fixtures;
+  : fixtures.filter(
+      (fixture) =>
+        !args.includes("--filter") ||
+        fixture.name.includes(args[args.indexOf("--filter") + 1] ?? ""),
+    );
+assert.ok(selectedFixtures.length > 0, "Fixture filter must select a real profile.");
 
 const fakeNeonDatabaseUrl =
   "postgresql://fixture:fixture@127.0.0.1:55432/flare_fixture?sslmode=disable";
@@ -78,7 +100,8 @@ function makeFixtureCommandRunner(fixture: (typeof fixtures)[number]): CommandRu
         : process.env;
 
     if (label === "project setup" && fixture.database === "neon") {
-      const appDirectory = fixture.preset === "worker" ? "apps/server" : "apps/web";
+      const appDirectory =
+        fixture.preset === "worker" || fixture.preset === "fullstack" ? "apps/server" : "apps/web";
       await writeFile(
         join(cwd, appDirectory, ".dev.vars"),
         `# Disposable localhost-only acceptance fixture; never points to a provider.\nDATABASE_URL=${fakeNeonDatabaseUrl}\n`,
@@ -120,6 +143,7 @@ try {
         destination,
         "--preset",
         fixture.preset,
+        ...("frontend" in fixture ? ["--frontend", fixture.frontend] : []),
         "--db",
         fixture.database,
         `--auth=${fixture.auth}`,
@@ -130,6 +154,49 @@ try {
         skipValidationCommands: staticOnly,
         commandRunner: makeFixtureCommandRunner(fixture),
       });
+      if (fixture.preset === "fullstack") {
+        const wranglerPath = join(destination, "apps/server/wrangler.jsonc");
+        const source = await readFile(wranglerPath, "utf8");
+        const wranglerNode = parseJsonc(source, wranglerPath);
+        const config = Bun.JSONC.parse(source) as {
+          workers_dev?: boolean;
+          preview_urls?: boolean;
+          env: { preview: { workers_dev?: boolean; preview_urls?: boolean } };
+        };
+        assert.equal(config.workers_dev, false, "Backend must remain private");
+        assert.equal(config.preview_urls, false, "Backend preview URLs must remain private");
+        assert.equal(config.env.preview.workers_dev, false);
+        assert.equal(config.env.preview.preview_urls, false);
+        const patched = patchRuntimeHosts(
+          source,
+          {
+            root: destination,
+            wranglerPath,
+            wranglerSource: source,
+            wranglerNode,
+            wrangler: getObject(wranglerNode)!,
+            role: "server",
+            config: {
+              schemaVersion: 1,
+              flareVersion: "0.14.1",
+              productionBranch: "main",
+              preset: "fullstack",
+              database: fixture.database,
+              auth: fixture.auth,
+              observability: "evlog",
+              uiLint: "shadcn",
+              capabilities: [],
+              deployment: { provider: "cloudflare", productionBranch: "main" },
+            },
+          },
+          "fixture.example.test",
+          "preview.fixture.example.test",
+        );
+        if (fixture.auth === "better-auth") {
+          assert.ok(patched.includes('"fixture.example.test"'));
+          assert.ok(patched.includes('"preview.fixture.example.test"'));
+        }
+      }
       const stat = await lstat(destination);
       assert.ok(stat.isDirectory(), `${basename(destination)} must exist at its final path`);
       console.log(

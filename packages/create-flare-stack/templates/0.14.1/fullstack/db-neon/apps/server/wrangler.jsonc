@@ -1,9 +1,11 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "{{PROJECT_NAME}}-server",
+  "main": "./src/index.ts",
   "compatibility_date": "2026-09-30",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "src/index.ts",
+  "workers_dev": false,
+  "preview_urls": false,
   "secrets": {
     "required": ["DATABASE_URL"],
   },
@@ -12,6 +14,7 @@
   },
   "env": {
     "development": {
+      "name": "{{PROJECT_NAME}}-server",
       "secrets": {
         "required": ["DATABASE_URL"],
       },
@@ -20,6 +23,9 @@
       },
     },
     "preview": {
+      "name": "{{PROJECT_NAME}}-server-preview",
+      "workers_dev": false,
+      "preview_urls": false,
       "secrets": {
         "required": ["DATABASE_URL"],
       },
@@ -27,8 +33,5 @@
         "FLARE_ENVIRONMENT": "preview",
       },
     },
-  },
-  "observability": {
-    "enabled": true,
   },
 }

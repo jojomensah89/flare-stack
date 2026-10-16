@@ -21,21 +21,20 @@ assert.ok(basename(resolvedFixtureRoot).startsWith("flare-host-discovery-"));
 
 try {
   await mkdir(join(fixtureRoot, "apps", "web"), { recursive: true });
-  await writeFile(
-    join(fixtureRoot, "flare.config.ts"),
-    `export default ${JSON.stringify({
-      schemaVersion: 1,
-      flareVersion: "0.14.1",
-      productionBranch: "main",
-      preset: "app",
-      database: "d1",
-      auth: "better-auth",
-      observability: "none",
-      uiLint: "none",
-      capabilities: [],
-      deployment: { provider: "cloudflare", productionBranch: "main" },
-    })};\n`,
-  );
+  const flareConfigPath = join(fixtureRoot, "flare.config.ts");
+  const flareConfig = {
+    schemaVersion: 1,
+    flareVersion: "0.14.1",
+    productionBranch: "main",
+    preset: "app",
+    database: "d1",
+    auth: "better-auth",
+    observability: "none",
+    uiLint: "none",
+    capabilities: [],
+    deployment: { provider: "cloudflare", productionBranch: "main" },
+  };
+  await writeFile(flareConfigPath, `export default ${JSON.stringify(flareConfig)};\n`);
   const wranglerConfig = {
     name: "flare-host-fixture",
     account_id: accountId,
@@ -269,7 +268,16 @@ try {
     join(fixtureRoot, "apps", "web", "wrangler.jsonc"),
     `${JSON.stringify(wranglerWithoutAccount)}\n`,
   );
+  await writeFile(
+    flareConfigPath,
+    `export default ${JSON.stringify({ ...flareConfig, observability: "evlog" })};\n`,
+  );
   const projectWithoutAccount = await loadProject(fixtureRoot);
+  assert.equal(
+    projectWithoutAccount.config.observability,
+    "evlog",
+    "config reload must bypass cache",
+  );
   const inferredAccountId = parseWhoAmIAccountId(
     {
       loggedIn: true,

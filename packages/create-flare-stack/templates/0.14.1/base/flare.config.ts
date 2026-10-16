@@ -5,6 +5,7 @@ export default defineFlareConfig({
   flareVersion: "{{FLARE_VERSION}}",
   productionBranch: "main",
   preset: "{{PRESET}}",
+  // {{FRONTEND_CONFIG}}
   database: "{{DATABASE}}",
   auth: "{{AUTH}}",
   observability: "evlog",

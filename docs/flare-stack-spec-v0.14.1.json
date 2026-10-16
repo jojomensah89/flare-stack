@@ -1,7 +1,14 @@
 {
   "name": "Flare Stack",
   "version": "0.14.1",
-  "status": "frozen implementation specification (tooling revision: Oxfmt + Oxlint replace Biome/ESLint; TypeScript remains the type gate)",
+  "status": "implementation specification with approved unreleased Router/Effect source revision; version label does not establish release acceptance",
+  "source_revision": {
+    "proposal": "react-router-spa-proposal.md",
+    "published_v0141_combinations": ["app/none", "app/d1", "app/d1/better-auth"],
+    "source_combination_count": 19,
+    "existing_project_migration": false,
+    "release_policy": "New source profiles require a matching source Flare CLI; do not advertise them against the published v0.14.1 archive."
+  },
   "verified_on": "2026-09-30",
   "goal": "Cloudflare-first startup pack with a few proven project shapes, exact pinned dependencies, local quality gates, structured observability, isolated environments, recoverable lifecycle commands, and simple Cloudflare deployment without default testing-framework bloat.",
   "package_manager": "bun",
@@ -18,11 +25,11 @@
       "deployables": ["apps/web"]
     },
     "fullstack": {
-      "frontend": "React 19 + TanStack Router + TanStack Query",
-      "backend": "Hono",
+      "frontend": "React 19 + TanStack Start (default) or Vite + TanStack Router SPA; TanStack Query in both",
+      "backend": "Effect services behind thin Hono HTTP routes",
       "runtime": "Cloudflare Workers",
       "deployables": ["apps/web", "apps/server"],
-      "internal_api_contract": "Hono RPC",
+      "internal_api_contract": "standard fetch + browser-safe shared Zod DTO schemas; no Hono RPC",
       "public_api_docs": "optional OpenAPI/Scalar recipe, not base",
       "browser_origin": "apps/web Worker is the single public browser origin",
       "networking": {
@@ -43,7 +50,7 @@
         "forward_request": "forward original Request object via env.SERVER.fetch(request)",
         "better_auth_base_url": "browser-facing web origin in local, preview, and production"
       },
-      "type_dependency": "apps/web declares apps/server as an explicit workspace dependency for type-only Hono AppType imports"
+      "type_dependency": "apps/web and apps/server depend on packages/shared; web imports no server runtime or Hono AppType"
     },
     "extension": {
       "frontend": "WXT + React 19",
@@ -636,7 +643,7 @@
     "direct local and Cloudflare Git deployment work",
     "logs, rollback, doctor, and upgrade dry-run are defined",
     "mutating commands are dry-run capable and recoverable",
-    "Hono RPC is the default fullstack internal API contract",
+    "schema-validated HTTP is the fullstack internal API contract; Effect owns backend service logic",
     "Better Auth baseline excludes verification/reset/OAuth until recipes are enabled",
     "generated projects include no testing framework by default",
     "post-deploy health verification confirms deployed URLs respond",
@@ -689,7 +696,7 @@
     "D1",
     "Neon",
     "Better Auth",
-    "fullstack with Hono RPC + same-origin Service Binding",
+    "fullstack with Effect services, thin Hono HTTP routes, TanStack Query, and same-origin Service Binding",
     "extension + worker",
     "recipes + registry + lifecycle"
   ],
@@ -714,7 +721,7 @@
       "preview and production required secrets are independent",
       "local D1 migration is visible to bun dev via canonical .wrangler/state",
       "fullstack bun dev starts one web Vite process with auxiliary server, not a duplicate server process",
-      "server RPC contract change breaks web bun check when consumer is stale",
+      "shared DTO contract change breaks web bun check when consumer is stale; runtime schemas reject invalid responses",
       "first fullstack deploy succeeds from empty account after provisioning/secrets bootstrap",
       "rollback targets web then server and leaves database unchanged",
       "empty-account DB first deploy provisions resources, migrates, bootstraps secrets, succeeds",
@@ -905,7 +912,7 @@
       "required secrets separated from Wrangler vars and bootstrapped before first deploy",
       "fullstack bun dev starts web only; auxiliary Worker starts server",
       "removed root prepare Lefthook installer; bun setup owns local hooks and CI disables hook install",
-      "dedicated type-only Hono RPC contract boundary with release fixture",
+      "browser-safe shared Zod DTO contract boundary with release fixture",
       "canonical repo-root D1 local persistence path",
       "Neon defaults to transaction-capable neon-serverless driver",
       "defined fullstack rollback order and server-first backwards compatibility rule",

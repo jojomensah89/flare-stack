@@ -3,6 +3,7 @@ import type { ReleaseMetadata } from "./release";
 export const FLARE_VERSION = "0.14.1";
 
 export type Preset = "app" | "fullstack" | "worker" | "extension";
+export type Frontend = "start" | "router";
 export type Database = "none" | "d1" | "neon";
 export type Auth = "none" | "better-auth";
 
@@ -10,6 +11,7 @@ export interface ProjectOptions {
   destination: string;
   projectName: string;
   preset: Preset;
+  frontend?: Frontend;
   database: Database;
   auth: Auth;
   skills?: string[];
@@ -19,6 +21,7 @@ export interface ProjectOptions {
 export interface ParsedArguments {
   destinationInput?: string;
   preset?: string;
+  frontend?: string;
   database?: string;
   auth?: string;
   skills?: string;

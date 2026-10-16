@@ -1,24 +1,41 @@
-import { Hono } from "hono";
 import { logStructuredError } from "@repo/observability";
-import { getAuth, validateServerAuthRequestOrigin } from "../auth";
+import { Hono } from "hono";
+import { handleAuthRequest } from "../service-tags";
+import { runEffect } from "../run-effect";
+import { makeAuthLayer, validateServerAuthRequestOrigin } from "../auth";
 import { ServerAuthOriginError } from "../auth/config";
 import type { ServerEnv } from "../env";
 
 export const authRoutes = new Hono<ServerEnv>().all("/*", async (c) => {
+  const requestId = c.get("requestId");
   try {
     validateServerAuthRequestOrigin(c.req.raw, c.env);
   } catch (error) {
     if (error instanceof ServerAuthOriginError) {
-      return c.json({ error: "Invalid request origin" }, 403);
+      return c.json(
+        {
+          error: { code: "INVALID_ORIGIN", message: "The request origin is not allowed." },
+          requestId,
+        },
+        403,
+      );
     }
-    logStructuredError(error, { operation: "auth.origin_validation" });
-    return c.json({ error: "Authentication is not configured" }, 500);
+    logStructuredError(error, { operation: "auth.origin_validation", requestId });
+    return c.json(
+      {
+        error: { code: "AUTH_CONFIGURATION", message: "Authentication is unavailable." },
+        requestId,
+      },
+      500,
+    );
   }
 
-  try {
-    return await getAuth(c.env).handler(c.req.raw);
-  } catch (error) {
-    logStructuredError(error, { operation: "auth.handler" });
-    return c.json({ error: "Authentication request failed" }, 500);
+  const result = await runEffect(handleAuthRequest(c.req.raw), makeAuthLayer(c.env), requestId);
+  if (!result.ok) {
+    return c.json(
+      { error: { code: result.failure.code, message: result.failure.message }, requestId },
+      result.failure.status,
+    );
   }
+  return result.value;
 });

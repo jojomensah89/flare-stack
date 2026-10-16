@@ -13,6 +13,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { parseEnvText } from "../env";
 import {
   getAppD1Bindings,
+  getResourceProject,
   requireAppD1,
   requireSupportedAppDatabase,
   type D1Binding,
@@ -387,6 +388,7 @@ export function migrationArgs(
   env: "local" | "preview" | "production",
   apply: boolean,
 ): string[] {
+  project = getResourceProject(project);
   const binding = getAppD1Bindings(project)[env === "local" ? "development" : env];
   const operation = apply ? "apply" : "list";
   const args = ["d1", "migrations", operation, binding.binding];
@@ -411,6 +413,7 @@ export function readMigrationState(
   deps: CliDependencies,
   env: "local" | "preview" | "production",
 ): MigrationState {
+  project = getResourceProject(project);
   if (env === "production") ensureProductionEnvironment(project, deps);
   const result = runTool(
     deps,
@@ -463,6 +466,7 @@ export async function applyD1Migrations(
   environment: "local" | "preview" | "production",
   allowDestructive = false,
 ): Promise<void> {
+  project = getResourceProject(project);
   if (environment === "production") ensureProductionEnvironment(project, deps);
   const state = readMigrationState(project, deps, environment);
   if (state.pending.length === 0) {
@@ -488,6 +492,7 @@ export async function applyD1Migrations(
 }
 
 export function fetchD1Records(project: ProjectContext, deps: CliDependencies): D1DatabaseRecord[] {
+  project = getResourceProject(project);
   const result = runTool(
     deps,
     "wrangler",
@@ -504,6 +509,7 @@ export function ensureRemoteD1(
   records: D1DatabaseRecord[],
   binding: D1Binding,
 ): D1DatabaseRecord {
+  project = getResourceProject(project);
   const found = records.find((record) => record.name === binding.databaseName);
   if (found) return found;
   const created = runTool(
@@ -536,6 +542,7 @@ export function getNeonDatabaseUrl(
   deps: CliDependencies,
   env: "local" | "preview" | "production",
 ): string {
+  project = getResourceProject(project);
   const envVars = getEnv(deps);
   if (env === "production") {
     const url = envVars.MIGRATION_STATUS_DATABASE_URL || envVars.DATABASE_URL;
@@ -545,28 +552,28 @@ export function getNeonDatabaseUrl(
     );
   }
   if (env === "preview") {
-    if (envVars.DATABASE_URL) return envVars.DATABASE_URL;
-    const previewVarsPaths = [
-      join(project.root, "apps", "web", ".preview.vars"),
-      join(project.root, "apps", "server", ".preview.vars"),
-    ];
+    const verifyIsolated = (url: string) => {
+      if (url === (envVars.MIGRATION_STATUS_DATABASE_URL || envVars.DATABASE_URL)) {
+        throw new Error("Neon preview and production migration URLs must be different.");
+      }
+      return url;
+    };
+    if (envVars.PREVIEW_DATABASE_URL) return verifyIsolated(envVars.PREVIEW_DATABASE_URL);
+    const previewVarsPaths = [join(workerDirectory(project), ".preview.vars")];
     for (const previewVarsPath of previewVarsPaths) {
       if (existsSync(previewVarsPath)) {
         const parsed = parseEnvText(readFileSync(previewVarsPath, "utf8"), previewVarsPath);
         const url = parsed.get("DATABASE_URL");
-        if (url) return url;
+        if (url) return verifyIsolated(url);
       }
     }
     throw new Error(
-      "Neon preview migration operations require DATABASE_URL in apps/web/.preview.vars or environment.",
+      `Neon preview migration operations require DATABASE_URL in ${workerDirectory(project)}/.preview.vars or PREVIEW_DATABASE_URL in environment.`,
     );
   }
   // local
   if (envVars.DATABASE_URL) return envVars.DATABASE_URL;
-  const devVarsPaths = [
-    join(project.root, "apps", "web", ".dev.vars"),
-    join(project.root, "apps", "server", ".dev.vars"),
-  ];
+  const devVarsPaths = [join(workerDirectory(project), ".dev.vars")];
   for (const devVarsPath of devVarsPaths) {
     if (existsSync(devVarsPath)) {
       const parsed = parseEnvText(readFileSync(devVarsPath, "utf8"), devVarsPath);
@@ -575,7 +582,7 @@ export function getNeonDatabaseUrl(
     }
   }
   throw new Error(
-    "Neon local migration operations require DATABASE_URL in apps/web/.dev.vars or environment.",
+    `Neon local migration operations require DATABASE_URL in ${workerDirectory(project)}/.dev.vars or environment.`,
   );
 }
 
@@ -652,6 +659,7 @@ export async function commandDb(
   subcommand: string | undefined,
   subargs: string[],
 ): Promise<number> {
+  project = getResourceProject(project);
   const output = getOutput(deps);
   expectOnlyFlags(subargs, [
     "--env",

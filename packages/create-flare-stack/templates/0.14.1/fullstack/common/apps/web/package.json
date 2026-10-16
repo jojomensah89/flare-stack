@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "@repo/observability": "workspace:*",
-    "@repo/server": "workspace:*",
+    "@repo/shared": "workspace:*",
     "@repo/ui": "workspace:*",
+    "@tanstack/react-query": "5.104.3",
     "@tanstack/react-router": "1.170.40",
     "@tanstack/react-start": "1.168.59",
     "evlog": "2.29.0",

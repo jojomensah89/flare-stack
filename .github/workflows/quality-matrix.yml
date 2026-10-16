@@ -40,7 +40,7 @@ jobs:
           bun run --cwd packages/create-flare-stack verify:planner
           bun run --cwd packages/create-flare-stack verify:packed
 
-      - name: Full acceptance for 14 app/fullstack/worker/extension profiles (Unix)
+      - name: Full acceptance for 19 app/fullstack/worker/extension profiles (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
@@ -48,7 +48,7 @@ jobs:
           bun run release:prepare -- --quiet --out-dir "$release_dir"
           bun run --cwd packages/create-flare-stack verify:fixtures --flare-package "$release_dir/flare-0.14.1.tgz"
 
-      - name: Full acceptance for 14 app/fullstack/worker/extension profiles (Windows)
+      - name: Full acceptance for 19 app/fullstack/worker/extension profiles (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |

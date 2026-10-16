@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // Verify the archive consumers receive, including files package managers omit by default.
-const root = mkdtempSync(join(tmpdir(), "flare-packed-fixture-"));
-assert.equal(dirname(resolve(root)), resolve(tmpdir()));
+// Windows runners can expose %TEMP% through an 8.3 path; Bun canonicalizes workspace paths.
+const temporaryDirectory = realpathSync.native(tmpdir());
+const root = mkdtempSync(join(temporaryDirectory, "flare-packed-fixture-"));
+assert.equal(dirname(resolve(root)), resolve(temporaryDirectory));
 assert.ok(basename(root).startsWith("flare-packed-fixture-"));
 const packageDirectory = resolve(import.meta.dir, "..");
 const flarePackageDirectory = resolve(import.meta.dir, "../../flare");

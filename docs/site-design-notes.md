@@ -17,3 +17,18 @@ The supplied reference takes precedence over the skill's generic restrictions on
 All preset selects remain native HTML controls. Fonts are self-hosted through the pinned Fontsource dependency. Colors, radii, and typography are CSS custom properties. Source/release availability continues to come from the shared catalog: three published v0.14.1 combinations and nineteen source combinations.
 
 Initial render review found a wrapping mobile header, a hard-to-read repeated summary, and missing shared primitive padding. Those were corrected. The taste source check reports zero failures or warnings; React Doctor reports 100/100. Responsive browser measurements and final screenshots are recorded with implementation validation, not presented as deployment evidence.
+
+## ASCII stack section
+
+The approved six-card section uses original negative-space ASCII drawings inspired by Rubik's character-texture treatment. It presents TanStack, Workers, Effect, D1 + Drizzle, Better Auth, and Base UI + Tailwind permanently; the builder below remains responsible for preset variations. This replaces the earlier design note's optional smooth scrolling with instant anchor navigation.
+
+| Before                                         | After                                            | Why                                                            |
+| ---------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Stack information only appeared in the builder | Six permanent illustrated technology cards       | Show the core tools before choosing a preset                   |
+| Smooth anchor scrolling                        | Instant anchor navigation; fixed responsive grid | Respect the request for no scrolling effects                   |
+| Static ASCII identity only in the hero         | Subtle character shimmer inside the stack art    | Extend the requested ASCII treatment without moving the layout |
+| Continuous decoration without a control        | Pause/resume and reduced-motion fallback         | Let visitors control the animation                             |
+
+On 16 October, the user explicitly changed the builder preference to shadcn Select. Use the shared Base UI-backed primitive for all preset controls; this supersedes earlier native-select notes. The new stack artwork remains decorative and original, with no dependence on Rubik runtime code or scrolling behavior.
+
+Validation for the 16 October update: `bun check`, the site production build, React Doctor (100/100), and taste source lint (zero findings) pass. Browser checks confirm six cards, 3/2/1 columns at 1440/768/390, no horizontal overflow, static reduced-motion artwork, pause/resume, and instant anchor scrolling. The shadcn controls select Router/source/database values correctly; keyboard Home/Enter and Escape focus restoration work; selecting no database disables auth and preserves its described hint. Copy success feedback appears, but the browser tool's isolated clipboard read returned empty, so this pass does not claim OS clipboard readback. The shared Select and generator mirror have identical bytes.

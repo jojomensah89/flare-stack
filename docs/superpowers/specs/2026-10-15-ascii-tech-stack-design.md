@@ -9,3 +9,5 @@ Use the existing CSS-variable palette and type. Three columns on desktop, two on
 Implementation: isolate the artwork/data/rendering in tech-stack.tsx and its styles in tech-stack.css; import the section into site.tsx and remove global smooth scrolling in site.css. Preserve the builder and unrelated local work.
 
 Validation: root bun check; site production build; source design lint and React Doctor; browser checks at desktop/tablet/phone where browser access is available, including pause/resume, keyboard focus, and reduced motion. Update the existing draft PR after validation. No release or deployment.
+
+16 October revision: the user requested shared shadcn Select controls in the builder. Replace native selects with the Base UI-backed shadcn primitive while preserving labels, controlled values, disabled auth hints, keyboard behavior, and source gating. This explicit instruction supersedes the earlier native-select preference.

@@ -1,5 +1,14 @@
 import { Check, Clipboard } from "lucide-react";
-import { Button, Input, Label } from "@repo/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui";
 import {
   PRESET_CATALOG,
   VERIFIED_V0141_RELEASE_MANIFEST,
@@ -114,20 +123,16 @@ export function BuilderControls({
         />
       )}
       <div className="source-control space-y-2">
-        <Label htmlFor="command-source">Command source</Label>
-        <select
-          id="command-source"
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        <Choice
+          label="Command source"
           value={source}
-          onChange={(event) => onSourceChange(event.target.value as SourceMode)}
-        >
-          <option value="release">Published release</option>
-          <option value="local">Local checkout</option>
-        </select>
-        <p className="text-sm text-muted-foreground">
-          Published commands match a released artifact. Local checkout commands work from the Flare
-          Stack source checkout.
-        </p>
+          onChange={(value) => onSourceChange(value as SourceMode)}
+          options={[
+            ["release", "Published release"],
+            ["local", "Local checkout"],
+          ]}
+          hint="Published commands match a released artifact. Local checkout commands work from the Flare Stack source checkout."
+        />
       </div>
     </form>
   );
@@ -363,20 +368,29 @@ function Choice({ label, value, options, onChange, disabled, hint }: ChoiceProps
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <select
-        id={id}
-        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+      <Select
         value={value}
         disabled={disabled}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        onChange={(event) => onChange(event.target.value)}
+        items={options.map(([option, text]) => ({ value: option, label: text }))}
+        onValueChange={(next) => {
+          if (typeof next === "string") onChange(next);
+        }}
       >
-        {options.map(([option, text]) => (
-          <option key={option} value={option}>
-            {text}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id={id}
+          className="min-h-11 w-full"
+          aria-describedby={hint ? `${id}-hint` : undefined}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="start" alignItemWithTrigger={false}>
+          {options.map(([option, text]) => (
+            <SelectItem key={option} value={option}>
+              {text}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {hint && (
         <p id={`${id}-hint`} className="text-sm text-muted-foreground">
           {hint}

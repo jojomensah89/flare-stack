@@ -14,6 +14,7 @@ import {
 import { Input, Label } from "@repo/ui";
 import { BuilderControls, CommandPanel, TemplateTable } from "./site-components";
 import { AsciiFlare } from "./ascii-flare";
+import { TechStack } from "./tech-stack";
 
 type SourceMode = "release" | "local";
 
@@ -215,6 +216,7 @@ export function Site() {
           </div>
           <AsciiFlare />
         </section>
+        <TechStack />
         <section id="presets" className="site-width builder-section">
           <div className="section-intro">
             <div>

@@ -9,5 +9,5 @@ This workspace is the standalone landing page and preset command builder.
 - This is a Cloudflare Workers static-assets site. Keep it free of server bindings and secrets.
 - Use semantic theme utilities; no raw colors, arbitrary Tailwind values, or inline styles.
 - The landing page follows the user's warm parchment reference: light canvas, warm ink, regular-weight headings, compact 4px corners, and sparse orange text links. Theme values live in `src/site.css`; register site utilities with `@utility` so shadcn lint can verify them.
-- Use native HTML `select` elements for preset choices. Do not replace them with a custom select primitive.
+- Use the shared shadcn Select backed by Base UI for preset choices, following the user's latest preference. Keep labels, keyboard navigation, disabled states, and CSS-variable theming intact.
 - Preserve the original ASCII flame and the live command builder. Read `emil-design-eng` and `design-taste-frontend` for craft work, applying the user's reference over conflicting generic skill rules.

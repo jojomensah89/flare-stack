@@ -1,4 +1,5 @@
 @import "@repo/ui/styles/globals.css";
+@import "./tech-stack.css";
 
 :root {
   --background: #f7f7f4;
@@ -31,7 +32,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scroll-padding-top: 28px;
 }
 body {

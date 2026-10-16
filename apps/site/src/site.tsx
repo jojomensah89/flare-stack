@@ -16,8 +16,6 @@ import { BuilderControls, CommandPanel, TemplateTable } from "./site-components"
 import { AsciiFlare } from "./ascii-flare";
 import { TechStack } from "./tech-stack";
 
-type SourceMode = "release" | "local";
-
 function releaseBackend(entry: CatalogEntry): CatalogBackend | undefined {
   return VERIFIED_V0141_RELEASE_MANIFEST.acceptedCombinations.find(
     (combination) => combination.id === entry.id,
@@ -57,15 +55,12 @@ function entryFor(selection: NormalizedCatalogSelection): CatalogEntry | undefin
   );
 }
 
-function stackDescription(entry: CatalogEntry, source?: SourceMode): string {
-  const { runtime, frontend, backend, database, authentication, tooling } = entry.stack;
-  const selectedBackend = source === "release" ? releaseBackend(entry) : undefined;
-  const describedBackend =
-    source === "release"
-      ? selectedBackend
-        ? backendLabel(selectedBackend)
-        : "not included in v0.14.1"
-      : backend;
+function stackDescription(entry: CatalogEntry): string {
+  const { runtime, frontend, database, authentication, tooling } = entry.stack;
+  const selectedBackend = releaseBackend(entry);
+  const describedBackend = selectedBackend
+    ? backendLabel(selectedBackend)
+    : "not included in v0.14.1";
   return [runtime, frontend, describedBackend, authentication, database, tooling.join(" + ")]
     .filter(Boolean)
     .join(" · ");
@@ -87,7 +82,6 @@ function selectOrNormalize(
 export function Site() {
   const [selection, setSelection] = useState(DEFAULT_SELECTION);
   const [projectName, setProjectName] = useState("my-app");
-  const [source, setSource] = useState<SourceMode>("release");
   const [filter, setFilter] = useState("");
   const [copyState, setCopyState] = useState("");
   const [selectionNotice, setSelectionNotice] = useState("");
@@ -107,13 +101,10 @@ export function Site() {
       };
     }
     try {
-      return buildScaffoldCommand(
-        selection,
-        projectName,
-        source === "release"
-          ? { mode: "release", manifest: VERIFIED_V0141_RELEASE_MANIFEST }
-          : { mode: "local" },
-      );
+      return buildScaffoldCommand(selection, projectName, {
+        mode: "release",
+        manifest: VERIFIED_V0141_RELEASE_MANIFEST,
+      });
     } catch (error) {
       return {
         command: "",
@@ -121,16 +112,16 @@ export function Site() {
         reason: error instanceof Error ? error.message : "Enter a valid project name.",
       };
     }
-  }, [selection, projectName, projectNameValidation, source]);
+  }, [selection, projectName, projectNameValidation]);
 
   const normalizedRows = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
     return PRESET_CATALOG.filter((candidate) => {
       const text =
-        `${candidate.label} ${candidate.id} ${stackDescription(candidate, source)}`.toLocaleLowerCase();
+        `${candidate.label} ${candidate.id} ${stackDescription(candidate)}`.toLocaleLowerCase();
       return !query || text.includes(query);
     });
-  }, [filter, source]);
+  }, [filter]);
 
   function updateSelection(patch: Partial<CatalogSelection>) {
     const before = selection;
@@ -167,12 +158,9 @@ export function Site() {
         (combination) => combination.id === entry.id,
       )
     : false;
-  const backendDescription =
-    source === "release"
-      ? isReleaseAvailable
-        ? `The v0.14.1 archive uses ${backendLabel(entry ? releaseBackend(entry) : undefined)}.`
-        : "This combination is not included in v0.14.1. Switch to Local checkout to use current source."
-      : `Current source uses ${backendLabel(entry?.backend)}.`;
+  const backendDescription = isReleaseAvailable
+    ? `The published v0.14.1 release uses ${backendLabel(entry ? releaseBackend(entry) : undefined)}.`
+    : "This combination is not included in the published v0.14.1 release yet.";
 
   return (
     <div id="top" className="site-shell bg-background text-foreground">
@@ -221,7 +209,7 @@ export function Site() {
           <div className="section-intro">
             <div>
               <h2>Make it your starting point.</h2>
-              <p>Choose what you need. Leave with a command.</p>
+              <p>Choose a published stack and copy its Bun command.</p>
             </div>
             <a className="site-accent-link" href="#templates">
               Explore all 19 combinations <ArrowDown size={15} aria-hidden="true" />
@@ -232,18 +220,12 @@ export function Site() {
               selection={selection}
               projectName={projectName}
               projectNameValidation={projectNameValidation}
-              source={source}
               onProjectNameChange={(value) => {
                 setProjectName(value);
                 setCopyState("");
                 setCommandError("");
               }}
               onSelectionChange={updateSelection}
-              onSourceChange={(value) => {
-                setSource(value);
-                setCopyState("");
-                setCommandError("");
-              }}
             />
             <div className="builder-result">
               <section aria-labelledby="summary-heading" className="stack-summary">
@@ -270,17 +252,10 @@ export function Site() {
                 <p className="stack-note">{backendDescription}</p>
               </section>
               <CommandPanel
-                source={source}
                 result={result}
-                projectNameValidation={projectNameValidation}
-                isReleaseAvailable={isReleaseAvailable}
                 copyState={copyState}
                 commandError={commandError}
                 onCopy={() => void copyCommand()}
-                onUseLocal={() => {
-                  setSource("local");
-                  setCopyState("");
-                }}
               />
             </div>
           </div>
@@ -307,7 +282,6 @@ export function Site() {
           <TemplateTable
             rows={normalizedRows}
             currentEntryId={entry?.id}
-            source={source}
             selectionNotice={selectionNotice}
             stackDescription={stackDescription}
             onSelect={updateSelection}

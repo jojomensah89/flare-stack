@@ -540,9 +540,6 @@ h2 {
 @utility project-name-control {
   grid-column: 1 / -1;
 }
-@utility source-control {
-  grid-column: 1 / -1;
-}
 @utility stack-summary {
   min-width: 0;
 }

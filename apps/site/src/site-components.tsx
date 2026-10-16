@@ -17,7 +17,6 @@ import {
   type NormalizedCatalogSelection,
 } from "create-flare-stack/catalog";
 
-type SourceMode = "release" | "local";
 type ProjectNameValidation = { valid: boolean; message?: string };
 type CommandResult = { command?: string; available: boolean; reason?: string };
 
@@ -25,20 +24,16 @@ interface BuilderControlsProps {
   selection: NormalizedCatalogSelection;
   projectName: string;
   projectNameValidation: ProjectNameValidation;
-  source: SourceMode;
   onProjectNameChange: (value: string) => void;
   onSelectionChange: (patch: Partial<CatalogSelection>) => void;
-  onSourceChange: (value: SourceMode) => void;
 }
 
 export function BuilderControls({
   selection,
   projectName,
   projectNameValidation,
-  source,
   onProjectNameChange,
   onSelectionChange,
-  onSourceChange,
 }: BuilderControlsProps) {
   return (
     <form
@@ -122,52 +117,25 @@ export function BuilderControls({
           }
         />
       )}
-      <div className="source-control space-y-2">
-        <Choice
-          label="Command source"
-          value={source}
-          onChange={(value) => onSourceChange(value as SourceMode)}
-          options={[
-            ["release", "Published release"],
-            ["local", "Local checkout"],
-          ]}
-          hint="Published commands match a released artifact. Local checkout commands work from the Flare Stack source checkout."
-        />
-      </div>
     </form>
   );
 }
 
 interface CommandPanelProps {
-  source: SourceMode;
   result: CommandResult;
-  projectNameValidation: ProjectNameValidation;
-  isReleaseAvailable: boolean;
   copyState: string;
   commandError: string;
   onCopy: () => void;
-  onUseLocal: () => void;
 }
 
-export function CommandPanel({
-  source,
-  result,
-  projectNameValidation,
-  isReleaseAvailable,
-  copyState,
-  commandError,
-  onCopy,
-  onUseLocal,
-}: CommandPanelProps) {
+export function CommandPanel({ result, copyState, commandError, onCopy }: CommandPanelProps) {
   return (
     <section aria-labelledby="command-heading" className="command-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 id="command-heading" className="font-medium">
           Scaffolding command
         </h3>
-        <span className="text-xs text-muted-foreground">
-          {source === "release" ? "Published release" : "Local checkout"}
-        </span>
+        <span className="text-xs text-muted-foreground">Published v0.14.1</span>
       </div>
       {result.available && result.command ? (
         <>
@@ -185,14 +153,7 @@ export function CommandPanel({
         </>
       ) : (
         <div className="command-unavailable space-y-4">
-          <p>
-            {result.reason ?? "This combination is not available from the selected command source."}
-          </p>
-          {source === "release" && projectNameValidation.valid && !isReleaseAvailable && (
-            <Button variant="outline" onClick={onUseLocal}>
-              Use local checkout
-            </Button>
-          )}
+          <p>{result.reason ?? "This stack is not included in the published release."}</p>
         </div>
       )}
       <p role="status" aria-live="polite" className="command-feedback">
@@ -208,16 +169,14 @@ export function CommandPanel({
 interface TemplateTableProps {
   rows: CatalogEntry[];
   currentEntryId?: string;
-  source: SourceMode;
   selectionNotice: string;
-  stackDescription: (entry: CatalogEntry, source?: SourceMode) => string;
+  stackDescription: (entry: CatalogEntry) => string;
   onSelect: (selection: CatalogSelection) => void;
 }
 
 export function TemplateTable({
   rows,
   currentEntryId,
-  source,
   selectionNotice,
   stackDescription,
   onSelect,
@@ -247,7 +206,7 @@ export function TemplateTable({
                 Auth
               </th>
               <th scope="col" className="px-4 py-3 font-medium">
-                Source
+                Published release
               </th>
               <th scope="col" className="px-4 py-3">
                 <span className="sr-only">Select</span>
@@ -260,7 +219,6 @@ export function TemplateTable({
                 key={candidate.id}
                 candidate={candidate}
                 current={candidate.id === currentEntryId}
-                source={source}
                 stackDescription={stackDescription}
                 onSelect={onSelect}
               />
@@ -293,16 +251,20 @@ function databaseLabel(database: CatalogSelection["database"]) {
   }
 }
 
+function isPublished(candidate: CatalogEntry) {
+  return VERIFIED_V0141_RELEASE_MANIFEST.acceptedCombinations.some(
+    (combination) => combination.id === candidate.id,
+  );
+}
+
 function TemplateRow({
   candidate,
   current,
-  source,
   stackDescription,
   onSelect,
 }: {
   candidate: CatalogEntry;
   current: boolean;
-  source: SourceMode;
   stackDescription: TemplateTableProps["stackDescription"];
   onSelect: TemplateTableProps["onSelect"];
 }) {
@@ -318,19 +280,13 @@ function TemplateRow({
           {candidate.label}
         </button>
         <span className="mobile-source hidden">
-          {source === "local"
-            ? "Current source"
-            : VERIFIED_V0141_RELEASE_MANIFEST.acceptedCombinations.some(
-                  (item) => item.id === candidate.id,
-                )
-              ? "v0.14.1"
-              : "Local source only"}
+          {isPublished(candidate) ? "v0.14.1" : "Not published"}
         </span>
         <details className="mt-2">
           <summary className="cursor-pointer underline-offset-4 hover:underline">
             Stack details
           </summary>
-          <p className="mt-3 break-words">{stackDescription(candidate, source)}</p>
+          <p className="mt-3 break-words">{stackDescription(candidate)}</p>
         </details>
       </td>
       <td className="px-4 py-4 text-muted-foreground">{candidate.stack.frontend}</td>
@@ -341,13 +297,7 @@ function TemplateRow({
         {candidate.selection.auth === "better-auth" ? "Better Auth" : "None"}
       </td>
       <td className="px-4 py-4 text-muted-foreground">
-        {source === "local"
-          ? "Current source"
-          : VERIFIED_V0141_RELEASE_MANIFEST.acceptedCombinations.some(
-                (combination) => combination.id === candidate.id,
-              )
-            ? "v0.14.1"
-            : "Local source only"}
+        {isPublished(candidate) ? "v0.14.1" : "Not published"}
       </td>
       <td className="break-words px-3 py-4 sm:px-4">
         <Button

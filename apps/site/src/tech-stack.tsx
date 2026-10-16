@@ -1,6 +1,3 @@
-import { useState } from "react";
-import { Button } from "@repo/ui";
-
 const glyphFrames = [".:+*", ":.*+"] as const;
 
 type TechCard = {
@@ -95,8 +92,6 @@ const artwork = cards.map((card, index) => ({
 }));
 
 export function TechStack() {
-  const [isPaused, setIsPaused] = useState(false);
-
   return (
     <section id="tech-stack" className="tech-stack-section" aria-labelledby="tech-stack-title">
       <div className="tech-stack-heading site-width">
@@ -104,19 +99,8 @@ export function TechStack() {
           <h2 id="tech-stack-title">The stack, already connected.</h2>
           <p>The tools behind every template, from the interface to the edge.</p>
         </div>
-        <span className="tech-motion-control">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-pressed={isPaused}
-            onClick={() => setIsPaused((paused) => !paused)}
-          >
-            {isPaused ? "Resume artwork" : "Pause artwork"}
-          </Button>
-        </span>
       </div>
-      <div className={isPaused ? "tech-stack-grid is-paused" : "tech-stack-grid"}>
+      <div className="tech-stack-grid">
         {artwork.map((card) => (
           <a
             className="tech-card"

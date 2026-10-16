@@ -17,18 +17,6 @@
   line-height: 1.5;
 }
 
-@utility tech-motion-control {
-  flex: none;
-}
-
-.tech-motion-control > button {
-  min-height: 40px;
-  border-radius: 4px;
-  color: var(--foreground);
-  cursor: pointer;
-  font-size: 13px;
-}
-
 @utility tech-stack-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -201,15 +189,10 @@
   outline-offset: -4px;
 }
 
-.tech-stack-grid.is-paused .tech-art-alt,
 .tech-card:hover .tech-art-alt,
 .tech-card:focus-visible .tech-art-alt {
   animation-play-state: paused;
   opacity: 0.62;
-}
-
-.tech-stack-grid.is-paused .tech-art-alt {
-  opacity: 0;
 }
 
 @media (max-width: 1000px) {
@@ -255,7 +238,6 @@
     opacity: 0;
   }
 
-  .tech-stack-grid.is-paused .tech-art-alt,
   .tech-card:hover .tech-art-alt,
   .tech-card:focus-visible .tech-art-alt {
     opacity: 0;

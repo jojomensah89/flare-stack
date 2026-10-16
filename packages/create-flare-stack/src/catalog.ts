@@ -349,7 +349,7 @@ export function buildScaffoldCommand(
     return {
       available: false,
       reason:
-        "No verified compatible generator release is available. Choose Local checkout or try again later.",
+        "No verified compatible generator release is available. Try again when a compatible release is published.",
       selection,
     };
   }
@@ -392,7 +392,7 @@ export function buildScaffoldCommand(
   if (!accepted) {
     return {
       available: false,
-      reason: `This stack is not included in the verified ${manifest.version} release. Choose Local checkout or another released stack.`,
+      reason: `This stack is not included in the verified ${manifest.version} release. Choose a published stack or wait for a compatible release.`,
       selection,
     };
   }

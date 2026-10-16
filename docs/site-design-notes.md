@@ -14,7 +14,7 @@ The supplied reference takes precedence over the skill's generic restrictions on
 | Dense scrolling mobile table                      | Responsive rows with expandable stack details                  | Keep every combination usable on a phone          |
 | Plain copy label                                  | Stable-width success feedback and an accessible status         | Confirm that copying completed                    |
 
-All preset choices use the shared Base UI-backed shadcn Select. Fonts are self-hosted through the pinned Fontsource dependency. Colors, radii, typography, and stack-brand accents are CSS custom properties. Source/release availability continues to come from the shared catalog: three published v0.14.1 combinations and nineteen source combinations.
+All preset choices use the shared Base UI-backed shadcn Select. Fonts are self-hosted through the pinned Fontsource dependency. Colors, radii, typography, and stack-brand accents are CSS custom properties. The builder lists nineteen catalog combinations but generates copyable commands only for the three combinations in published v0.14.1. Other choices clearly show that they are not yet published; the page has no local-checkout command path.
 
 Initial render review found a wrapping mobile header, a hard-to-read repeated summary, and missing shared primitive padding. Those were corrected. The taste source check reports zero failures or warnings; React Doctor reports 100/100. Responsive browser measurements and final screenshots are recorded with implementation validation, not presented as deployment evidence.
 
@@ -22,12 +22,12 @@ Initial render review found a wrapping mobile header, a hard-to-read repeated su
 
 The eight-card section uses local SVG brand marks over original ASCII character fields. It presents TanStack, Cloudflare Workers, Effect, D1 + Drizzle, Better Auth, Base UI + Tailwind v4, WXT, and Neon permanently; the builder below remains responsible for preset variations. A dark showcase and each technology's brand accent draw on the supplied reference, while the rest of the landing page keeps the parchment palette. Hover and keyboard focus emphasize the matching brand color. This uses no scroll-linked motion or external image requests.
 
-| Before                                         | After                                                  | Why                                                         |
-| ---------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------- |
-| Stack information only appeared in the builder | Eight permanent branded technology cards               | Include the full set of tools shown across the presets      |
-| Approximate ASCII logo silhouettes             | Actual local logos with brand colors and ASCII texture | Identify each technology accurately and match its identity  |
-| Static labels without an interaction           | Brand-color hover and keyboard-focus feedback          | Make each tool recognizable and linked to its documentation |
-| Continuous decoration without a control        | Pause/resume and reduced-motion fallback               | Let visitors control the animation                          |
+| Before                                         | After                                                        | Why                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
+| Stack information only appeared in the builder | Eight permanent branded technology cards                     | Include the full set of tools shown across the presets      |
+| Approximate ASCII logo silhouettes             | Actual local logos with brand colors and ASCII texture       | Identify each technology accurately and match its identity  |
+| Static labels without an interaction           | Brand-color hover and keyboard-focus feedback                | Make each tool recognizable and linked to its documentation |
+| Continuous decoration without a control        | Automatic shimmer with hover/focus and reduced-motion states | Keep the artwork animated without adding a control          |
 
 On 16 October, the user explicitly changed the builder preference to shadcn Select. Use the shared Base UI-backed primitive for all preset controls; this supersedes earlier native-select notes. On 16 October, the user also requested official brand colors and marks, the WXT and Neon cards, and consistent casing. The ASCII texture remains decorative and original, with no dependence on Rubik runtime code or scrolling behavior. Database names in the preset table use their proper casing: None, D1, and Neon.
 

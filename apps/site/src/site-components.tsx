@@ -282,6 +282,17 @@ export function TemplateTable({
   );
 }
 
+function databaseLabel(database: CatalogSelection["database"]) {
+  switch (database) {
+    case "d1":
+      return "D1";
+    case "neon":
+      return "Neon";
+    default:
+      return "None";
+  }
+}
+
 function TemplateRow({
   candidate,
   current,
@@ -324,9 +335,7 @@ function TemplateRow({
       </td>
       <td className="px-4 py-4 text-muted-foreground">{candidate.stack.frontend}</td>
       <td className="px-4 py-4 text-muted-foreground">
-        {candidate.selection.database === "none"
-          ? "None"
-          : candidate.selection.database.toUpperCase()}
+        {databaseLabel(candidate.selection.database)}
       </td>
       <td className="px-4 py-4 text-muted-foreground">
         {candidate.selection.auth === "better-auth" ? "Better Auth" : "None"}

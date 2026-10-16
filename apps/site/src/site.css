@@ -20,6 +20,18 @@
   --input: #cdcdc9;
   --ring: #84847e;
   --site-accent: #c43e00;
+  --tech-surface: #090a0a;
+  --tech-grid-line: #393a39;
+  --tech-text: #f7f7f4;
+  --tech-muted: #aaa9a2;
+  --tech-tanstack: #ff9d18;
+  --tech-cloudflare: #f38020;
+  --tech-effect: #ededed;
+  --tech-drizzle: #c5f74f;
+  --tech-better-auth: #ededed;
+  --tech-tailwind: #38bdf8;
+  --tech-wxt: #67d55e;
+  --tech-neon: #34d59a;
   --radius: 6px;
   --app-font-sans: "DM Sans Variable", "Helvetica Neue", sans-serif;
   --site-width: 1200px;
